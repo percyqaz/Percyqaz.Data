@@ -3,3 +3,7 @@
 ################################################################################
 
 /Percyqaz.Json/bin/Debug/netstandard2.0
+/Percyqaz.Json/obj
+/Percyqaz.Json.Tests/bin/Debug/netcoreapp3.1
+/Percyqaz.Json.Tests/obj
+/.vs/Percyqaz.Json
