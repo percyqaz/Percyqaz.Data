@@ -2,9 +2,10 @@
 
 open System
 open System.Globalization
-open System.Collections.Generic
 
 module Json =
+
+    type JsonRequiredAttribute() = inherit Attribute()
 
     type Json =
     | Object of Map<string, Json>
@@ -95,7 +96,7 @@ module Json =
             | (_, _, _, _, _, _, Failure e, _) -> Exception ("Error in element 7", e) |> Failure
             | (_, _, _, _, _, _, _, Failure e) -> Exception ("Error in element 8", e) |> Failure
 
-    module Mapping =
+    module MappingQ =
 
         type JsonEncoder<'T> = 'T -> Json
         type JsonDecoder<'T> = 'T -> Json -> JsonResult<'T>
@@ -230,6 +231,7 @@ module Json =
             static member inline FromJson(_: ^T option, json: Json) = match json with Json.Null -> Success None | j -> fromJson(Unchecked.defaultof<'T>, j) |> JsonResult.map Some
 
             //TUPLES UP TO 8
+            //todo: fix unchecked issue
             static member inline ToJson((a, b): ^A * ^B) = [toJson a; toJson b] |> Json.Array
             static member inline FromJson((a_, b_): ^A * ^B, json: Json) =
                 match json with
@@ -237,10 +239,10 @@ module Json =
                     (fromJson (a_, a), fromJson (b_, b)) |> JsonResult.tuple2
                 | _ -> Exception("Expected a json array with 2 elements") |> Failure
             static member inline ToJson((a, b, c): ^A * ^B * ^C) = [toJson a; toJson b; toJson c] |> Json.Array
-            static member inline FromJson((a_, b_, c_): ^A * ^B * ^C, json: Json) =
+            static member inline FromJson(_: ^A * ^B * ^C, json: Json) =
                 match json with
                 | Json.Array [a; b; c] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c)) |> JsonResult.tuple3
+                    (fromJson (Unchecked.defaultof<'A>, a), fromJson (Unchecked.defaultof<'B>, b), fromJson (Unchecked.defaultof<'C>, c)) |> JsonResult.tuple3
                 | _ -> Exception("Expected a json array with 3 elements") |> Failure
             static member inline ToJson((a, b, c, d): ^A * ^B * ^C * ^D) = [toJson a; toJson b; toJson c; toJson d] |> Json.Array
             static member inline FromJson((a_, b_, c_, d_): ^A * ^B * ^C * ^D, json: Json) =
@@ -273,9 +275,126 @@ module Json =
                     (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d), fromJson (e_, e), fromJson (f_, f), fromJson (g_, g), fromJson (h_, h)) |> JsonResult.tuple8
                 | _ -> Exception("Expected a json array with 8 elements") |> Failure
 
-            static member ToJson(o: obj) =
-                let t = o.GetType()
-                Json.Null
+    module Mapping =
 
-        let test =
-            toJson(("Hello", 6, 30.0f))
+        open TypeShape.Core
+        open TypeShape.Core.Utils
+
+        type JsonPickler<'T> = {
+            Encode: 'T -> Json
+            Decode: 'T -> Json -> JsonResult<'T>
+        }
+
+        let mkPickler encode decode =
+            {
+                Encode = unbox encode
+                Decode = unbox decode
+            }
+
+        let rec getPickler<'T>() : JsonPickler<'T> = genPickler<'T>()
+
+        and genPickler<'T>() : JsonPickler<'T> =
+            match shapeof<'T> with
+            | Shape.Unit ->
+                mkPickler
+                    (fun _ -> Json.Null)
+                    (fun _ _ -> Success ())
+            | Shape.Bool ->
+                mkPickler
+                    (fun b -> if b then Json.True else Json.False)
+                    (fun _ json -> 
+                        match json with
+                        | Json.String ""
+                        | Json.Number "0"
+                        | Json.Null
+                        | Json.False -> Success false
+                        | Json.String _
+                        | Json.Number "1"
+                        | Json.True -> Success true
+                        | _ -> Failure <| Exception("Expected a boolean value"))
+            | Shape.Byte
+            | Shape.SByte
+            | Shape.Int16
+            | Shape.Int32
+            | Shape.Int64
+            | Shape.IntPtr
+            | Shape.UInt16
+            | Shape.UInt32
+            | Shape.UInt64
+            | Shape.UIntPtr
+            | Shape.BigInt
+            | Shape.Single
+            | Shape.Double
+            | Shape.Decimal
+            | Shape.Char
+            | Shape.String -> failwith "nyi"
+            | Shape.TimeSpan
+            | Shape.DateTime
+            | Shape.DateTimeOffset -> failwith "nyi"
+
+            | Shape.Enum t -> failwith "nyi"
+            | Shape.Tuple (:? ShapeTuple<'T> as shape) ->
+                let elemHandler (field: IShapeMember<'Class>) =
+                    field.Accept { new IMemberVisitor<'Class, _> with
+                    member _.Visit (shape: ShapeMember<'Class, 'Field>) =
+                        let tP = getPickler()
+                        (fun o -> tP.Encode(shape.Get o)),
+                        (fun o json ->
+                            match tP.Decode(shape.Get o)(json) with
+                            | Success v -> Success (shape.Set o v)
+                            | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
+                let encoders, decoders = shape.Elements |> Array.map elemHandler |> Array.unzip
+                mkPickler
+                    (fun o -> Array.map (fun enc -> enc(o)) encoders |> List.ofArray |> Json.Array)
+                    (fun o json -> 
+                        match json with 
+                        | Json.Array xs when List.length xs = shape.Elements.Length -> 
+                            Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success o)
+                        | _ -> Failure <| Exception("Expected a json array of length " + shape.Elements.Length.ToString()))
+            | Shape.Dictionary t -> failwith "nyi"
+            | Shape.Array t -> failwith "nyi"
+            | Shape.ResizeArray t -> failwith "nyi"
+            | Shape.FSharpList t -> failwith "nyi"
+            | Shape.FSharpOption s ->
+                s.Element.Accept {
+                    new ITypeVisitor<JsonPickler<'T>> with
+                        member _.Visit<'t> () =
+                            let tP = getPickler<'t>()
+                            mkPickler
+                                (function Some v -> tP.Encode(v) | None -> Json.Null)
+                                (fun _ json ->
+                                    match json with
+                                    | Json.Null -> Success None
+                                    | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonResult.map(Some)) }
+            | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
+                let memberHandler (field: IShapeMember<'Class>) =
+                    let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
+                    field.Accept { new IMemberVisitor<'Class, ('Class -> Map<string, Json> -> Map<string, Json>) * ('Class -> Map<string, Json> -> JsonResult<'Class>)> with
+                    member _.Visit(shape: ShapeMember<'Class, 'Member>) =
+                        let tP = getPickler()
+                        (
+                            (fun o map -> Map.add field.Label (tP.Encode(shape.Get o)) map),
+                            (fun o map ->
+                                if Map.containsKey(field.Label)(map) then
+                                    match tP.Decode(shape.Get o)(map.[field.Label]) with
+                                    | Success v -> Success (shape.Set o v)
+                                    | Failure e -> if required then Failure <| Exception("Required field \"" + field.Label + "\" was not parsed successfully", e) else Success o
+                                else if required then Failure <| Exception("Required field \"" + field.Label + "\" was not provided") else Success o) )}
+                let (inserters: ('T -> Map<string, Json> -> Map<string, Json>)[]), (decoders: ('T -> Map<string, Json> -> JsonResult<'T>)[]) = shape.Fields |> Array.map memberHandler |> Array.unzip
+                mkPickler
+                    (fun o -> Array.fold (fun map inserter -> inserter(o)(map)) Map.empty inserters |> Json.Object)
+                    (fun o json ->
+                        match json with
+                        | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
+                            //put this through 'T.Verify(o)
+                        | _ -> Failure (Exception("Expected a json object")))
+            | Shape.FSharpUnion t -> failwith "nyi"
+
+            | _ -> failwith "This type is unsupported"
+
+        let toJson<'T>(obj: 'T) = getPickler<'T>().Encode(obj)
+        let fromJson<'T>(json: Json) = getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
+        let inline fromJsonRecord(json: Json): JsonResult<'T> =
+            let def = (^T: (static member Default: ^T)())
+            getPickler<'T>().Decode(def)(json)
+            
