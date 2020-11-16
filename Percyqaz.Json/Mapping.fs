@@ -285,7 +285,7 @@ module Json =
             Decode: 'T -> Json -> JsonResult<'T>
         }
 
-        let mkPickler encode decode =
+        let mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) =
             {
                 Encode = unbox encode
                 Decode = unbox decode
@@ -326,8 +326,8 @@ module Json =
             | Shape.Single
             | Shape.Double
             | Shape.Decimal
-            | Shape.Char
-            | Shape.String -> failwith "nyi"
+            | Shape.Char -> failwith "nyi"
+            | Shape.String -> mkPickler (Json.String) (fun _ json -> match json with Json.String s -> Success s | _ -> Failure <| Exception("Expected a JSON string"))
             | Shape.TimeSpan
             | Shape.DateTime
             | Shape.DateTimeOffset -> failwith "nyi"
@@ -346,11 +346,11 @@ module Json =
                 let encoders, decoders = shape.Elements |> Array.map elemHandler |> Array.unzip
                 mkPickler
                     (fun o -> Array.map (fun enc -> enc(o)) encoders |> List.ofArray |> Json.Array)
-                    (fun o json -> 
+                    (fun _ json -> 
                         match json with 
                         | Json.Array xs when List.length xs = shape.Elements.Length -> 
-                            Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success o)
-                        | _ -> Failure <| Exception("Expected a json array of length " + shape.Elements.Length.ToString()))
+                            Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
+                        | _ -> Failure <| Exception("Expected a JSON array of length " + shape.Elements.Length.ToString()))
             | Shape.Dictionary t -> failwith "nyi"
             | Shape.Array t -> failwith "nyi"
             | Shape.ResizeArray t -> failwith "nyi"
@@ -387,7 +387,7 @@ module Json =
                         match json with
                         | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
                             //put this through 'T.Verify(o)
-                        | _ -> Failure (Exception("Expected a json object")))
+                        | _ -> Failure (Exception("Expected a JSON object")))
             | Shape.FSharpUnion t -> failwith "nyi"
 
             | _ -> failwith "This type is unsupported"
@@ -397,4 +397,3 @@ module Json =
         let inline fromJsonRecord(json: Json): JsonResult<'T> =
             let def = (^T: (static member Default: ^T)())
             getPickler<'T>().Decode(def)(json)
-            
