@@ -33,176 +33,13 @@ module Json =
             | Success x -> Success (f x)
             | Failure e -> Failure e
 
-        let tuple2 =
-            function
-            | (Success a, Success b) -> Success (a, b)
-            | (Failure e, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e) -> Exception ("Error in element 2", e) |> Failure
-
-        let tuple3 =
-            function
-            | (Success a, Success b, Success c) -> Success (a, b, c)
-            | (Failure e, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e) -> Exception ("Error in element 3", e) |> Failure
-
-        let tuple4 =
-            function
-            | (Success a, Success b, Success c, Success d) -> Success (a, b, c, d)
-            | (Failure e, _, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e, _) -> Exception ("Error in element 3", e) |> Failure
-            | (_, _, _, Failure e) -> Exception ("Error in element 4", e) |> Failure
-
-        let tuple5 =
-            function
-            | (Success a, Success b, Success c, Success d, Success e) -> Success (a, b, c, d, e)
-            | (Failure e, _, _, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _, _, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e, _, _) -> Exception ("Error in element 3", e) |> Failure
-            | (_, _, _, Failure e, _) -> Exception ("Error in element 4", e) |> Failure
-            | (_, _, _, _, Failure e) -> Exception ("Error in element 5", e) |> Failure
-
-        let tuple6 =
-            function
-            | (Success a, Success b, Success c, Success d, Success e, Success f) -> Success (a, b, c, d, e, f)
-            | (Failure e, _, _, _, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _, _, _, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e, _, _, _) -> Exception ("Error in element 3", e) |> Failure
-            | (_, _, _, Failure e, _, _) -> Exception ("Error in element 4", e) |> Failure
-            | (_, _, _, _, Failure e, _) -> Exception ("Error in element 5", e) |> Failure
-            | (_, _, _, _, _, Failure e) -> Exception ("Error in element 6", e) |> Failure
-
-        let tuple7 =
-            function
-            | (Success a, Success b, Success c, Success d, Success e, Success f, Success g) -> Success (a, b, c, d, e, f, g)
-            | (Failure e, _, _, _, _, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _, _, _, _, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e, _, _, _, _) -> Exception ("Error in element 3", e) |> Failure
-            | (_, _, _, Failure e, _, _, _) -> Exception ("Error in element 4", e) |> Failure
-            | (_, _, _, _, Failure e, _, _) -> Exception ("Error in element 5", e) |> Failure
-            | (_, _, _, _, _, Failure e, _) -> Exception ("Error in element 6", e) |> Failure
-            | (_, _, _, _, _, _, Failure e) -> Exception ("Error in element 7", e) |> Failure
-
-        let tuple8 =
-            function
-            | (Success a, Success b, Success c, Success d, Success e, Success f, Success g, Success h) -> Success (a, b, c, d, e, f, g, h)
-            | (Failure e, _, _, _, _, _, _, _) -> Exception ("Error in element 1", e) |> Failure
-            | (_, Failure e, _, _, _, _, _, _) -> Exception ("Error in element 2", e) |> Failure
-            | (_, _, Failure e, _, _, _, _, _) -> Exception ("Error in element 3", e) |> Failure
-            | (_, _, _, Failure e, _, _, _, _) -> Exception ("Error in element 4", e) |> Failure
-            | (_, _, _, _, Failure e, _, _, _) -> Exception ("Error in element 5", e) |> Failure
-            | (_, _, _, _, _, Failure e, _, _) -> Exception ("Error in element 6", e) |> Failure
-            | (_, _, _, _, _, _, Failure e, _) -> Exception ("Error in element 7", e) |> Failure
-            | (_, _, _, _, _, _, _, Failure e) -> Exception ("Error in element 8", e) |> Failure
-
     module MappingQ =
 
-        type JsonEncoder<'T> = 'T -> Json
-        type JsonDecoder<'T> = 'T -> Json -> JsonResult<'T>
-
-        //MAPPINGS FOR SIMPLE TYPES
-        type DefaultTransforms = 
-            //STRINGS
-            static member ToJson(s: string) = Json.String s
-            static member FromJson(_: string, json: Json) =
-                match json with Json.String s -> Success s | _ -> Exception("Expected a json string") |> Failure
-
-            //INTEGER TYPES
-            static member ToJson(i: int16) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: int16, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Int16.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: int32) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: int32, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Int32.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: int64) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: int64, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Int64.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: uint16) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: uint16, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try UInt16.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: uint32) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: uint32, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try UInt32.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: uint64) = i.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: uint64, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try UInt64.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(i: bigint) = i.ToString("R", CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: bigint, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Numerics.BigInteger.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            //FLOATING POINT TYPES
-            static member ToJson(f: float32) = f.ToString("R", CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: float32, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Single.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(f: float) = f.ToString("G17", CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: float, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Double.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            static member ToJson(f: decimal) = f.ToString(CultureInfo.InvariantCulture) |> Json.Number
-            static member FromJson(_: decimal, json: Json) =
-                match json with
-                | Json.String s | Json.Number s -> try Int16.Parse(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err
-                | _ -> Exception("Expected a number") |> Failure
-
-            //OTHER
-            static member ToJson(b: bool) = if b then Json.True else Json.False
-            static member FromJson(_: bool, json: Json) =
-                match json with
-                | Json.String "" -> Success false
-                | Json.Number "0" -> Success false
-                | Json.Null -> Success false
-                | Json.False -> Success false
-                | Json.String _ -> Success true
-                | Json.Number "1" -> Success true
-                | Json.True -> Success true
-                | _ -> Failure <| Exception("Expected a boolean value")
-            static member ToJson(uo: unit option) = match uo with Some () -> Json.True | None -> Json.False
-            static member FromJson(_: unit option, json: Json) = (DefaultTransforms.FromJson(false, json)) |> JsonResult.map (fun b -> if b then Some () else None)
-            static member ToJson(_: unit) = Json.Null
-            static member FromJson(_: unit, json: Json) = Success ()
-
-        /// ---
-        //            ENCODE/DECODE USING DUCK TYPING
-
-        let defaultInstance = Unchecked.defaultof<DefaultTransforms>
-        let inline toJsonInternal(defaults: ^defaults) (obj: ^T): Json =
-            ((^T or ^defaults): (static member ToJson: 'T -> Json) obj)
-        let inline fromJsonInternal(defaults: ^defaults) (defaultValue: ^T) (json: Json): JsonResult<'T> =
-            ((^T or ^defaults): (static member FromJson: 'T -> Json -> JsonResult<'T>)(defaultValue, json))
-
-        let inline toJson(obj: ^T) = toJsonInternal(defaultInstance)(obj)
-        let inline fromJson(obj: ^T, json: Json) = fromJsonInternal(defaultInstance)(obj)(json)
-
-        /// ---
+        (*let toJson = failwith "nyi"
+        let fromJson = failwith "nyi"
 
         //MAPPINGS FOR COMPOSITE TYPES
-        type DefaultTransforms with
+        type DefaultTransforms =
 
             //LISTS
             static member inline ToJson(list: ^T list) = list |> (List.map toJson) |> Json.Array
@@ -220,60 +57,7 @@ module Json =
                         | Failure e -> new Exception(sprintf "Error in item %i" n, e) |> Failure
                 match json with
                 | Json.Array xs -> f (0, xs)
-                | _ -> Exception("Expected a json array") |> Failure
-
-            //ARRAYS
-            static member inline ToJson(list: ^T array) = list |> (Array.map toJson) |> List.ofArray |> Json.Array
-            static member inline FromJson(_: ^T array, json: Json) = fromJson(([]: 'T list), json) |> JsonResult.map Array.ofList
-
-            //OPTIONS
-            static member inline ToJson(op: ^T option) = match op with Some x -> toJson x | None -> Json.Null
-            static member inline FromJson(_: ^T option, json: Json) = match json with Json.Null -> Success None | j -> fromJson(Unchecked.defaultof<'T>, j) |> JsonResult.map Some
-
-            //TUPLES UP TO 8
-            //todo: fix unchecked issue
-            static member inline ToJson((a, b): ^A * ^B) = [toJson a; toJson b] |> Json.Array
-            static member inline FromJson((a_, b_): ^A * ^B, json: Json) =
-                match json with
-                | Json.Array [a; b] ->
-                    (fromJson (a_, a), fromJson (b_, b)) |> JsonResult.tuple2
-                | _ -> Exception("Expected a json array with 2 elements") |> Failure
-            static member inline ToJson((a, b, c): ^A * ^B * ^C) = [toJson a; toJson b; toJson c] |> Json.Array
-            static member inline FromJson(_: ^A * ^B * ^C, json: Json) =
-                match json with
-                | Json.Array [a; b; c] ->
-                    (fromJson (Unchecked.defaultof<'A>, a), fromJson (Unchecked.defaultof<'B>, b), fromJson (Unchecked.defaultof<'C>, c)) |> JsonResult.tuple3
-                | _ -> Exception("Expected a json array with 3 elements") |> Failure
-            static member inline ToJson((a, b, c, d): ^A * ^B * ^C * ^D) = [toJson a; toJson b; toJson c; toJson d] |> Json.Array
-            static member inline FromJson((a_, b_, c_, d_): ^A * ^B * ^C * ^D, json: Json) =
-                match json with
-                | Json.Array [a; b; c; d] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d)) |> JsonResult.tuple4
-                | _ -> Exception("Expected a json array with 4 elements") |> Failure
-            static member inline ToJson((a, b, c, d, e): ^A * ^B * ^C * ^D * ^E) = [toJson a; toJson b; toJson c; toJson d; toJson e] |> Json.Array
-            static member inline FromJson((a_, b_, c_, d_, e_): ^A * ^B * ^C * ^D * ^E, json: Json) =
-                match json with
-                | Json.Array [a; b; c; d; e] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d), fromJson (e_, e)) |> JsonResult.tuple5
-                | _ -> Exception("Expected a json array with 5 elements") |> Failure
-            static member inline ToJson((a, b, c, d, e, f): ^A * ^B * ^C * ^D * ^E * ^F) = [toJson a; toJson b; toJson c; toJson d; toJson e; toJson f] |> Json.Array
-            static member inline FromJson((a_, b_, c_, d_, e_, f_): ^A * ^B * ^C * ^D * ^E * ^F, json: Json) =
-                match json with
-                | Json.Array [a; b; c; d; e; f] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d), fromJson (e_, e), fromJson (f_, f)) |> JsonResult.tuple6
-                | _ -> Exception("Expected a json array with 6 elements") |> Failure
-            static member inline ToJson((a, b, c, d, e, f, g): ^A * ^B * ^C * ^D * ^E * ^F * ^G) = [toJson a; toJson b; toJson c; toJson d; toJson e; toJson f; toJson g] |> Json.Array
-            static member inline FromJson((a_, b_, c_, d_, e_, f_, g_): ^A * ^B * ^C * ^D * ^E * ^F * ^G, json: Json) =
-                match json with
-                | Json.Array [a; b; c; d; e; f; g] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d), fromJson (e_, e), fromJson (f_, f), fromJson (g_, g)) |> JsonResult.tuple7
-                | _ -> Exception("Expected a json array with 7 elements") |> Failure
-            static member inline ToJson((a, b, c, d, e, f, g, h): ^A * ^B * ^C * ^D * ^E * ^F * ^G * ^H) = [toJson a; toJson b; toJson c; toJson d; toJson e; toJson f; toJson g; toJson h] |> Json.Array
-            static member inline FromJson((a_, b_, c_, d_, e_, f_, g_, h_): ^A * ^B * ^C * ^D * ^E * ^F * ^G * ^H, json: Json) =
-                match json with
-                | Json.Array [a; b; c; d; e; f; g; h] ->
-                    (fromJson (a_, a), fromJson (b_, b), fromJson (c_, c), fromJson (d_, d), fromJson (e_, e), fromJson (f_, f), fromJson (g_, g), fromJson (h_, h)) |> JsonResult.tuple8
-                | _ -> Exception("Expected a json array with 8 elements") |> Failure
+                | _ -> Exception("Expected a json array") |> Failure*)
 
     module Mapping =
 
@@ -291,6 +75,9 @@ module Json =
                 Decode = unbox decode
             }
 
+        let inline mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
+            mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | _ -> Exception("Expected a number") |> Failure)
+
         let rec getPickler<'T>() : JsonPickler<'T> = genPickler<'T>()
 
         and genPickler<'T>() : JsonPickler<'T> =
@@ -304,29 +91,24 @@ module Json =
                     (fun b -> if b then Json.True else Json.False)
                     (fun _ json -> 
                         match json with
-                        | Json.String ""
-                        | Json.Number "0"
-                        | Json.Null
-                        | Json.False -> Success false
-                        | Json.String _
-                        | Json.Number "1"
-                        | Json.True -> Success true
+                        | Json.String "" | Json.Number "0" | Json.Null | Json.False -> Success false
+                        | Json.String _ | Json.Number "1" | Json.True -> Success true
                         | _ -> Failure <| Exception("Expected a boolean value"))
             | Shape.Byte
-            | Shape.SByte
-            | Shape.Int16
-            | Shape.Int32
-            | Shape.Int64
-            | Shape.IntPtr
-            | Shape.UInt16
-            | Shape.UInt32
-            | Shape.UInt64
-            | Shape.UIntPtr
-            | Shape.BigInt
-            | Shape.Single
-            | Shape.Double
-            | Shape.Decimal
-            | Shape.Char -> failwith "nyi"
+            | Shape.SByte -> failwith "nyi"
+            | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString(CultureInfo.InvariantCulture)) (Int16.Parse)
+            | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString(CultureInfo.InvariantCulture)) (Int32.Parse)
+            | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString(CultureInfo.InvariantCulture)) (Int64.Parse)
+            | Shape.IntPtr -> failwith "nyi"
+            | Shape.UInt16 -> mkNumericPickler (fun (i: uint16) -> i.ToString(CultureInfo.InvariantCulture)) (UInt16.Parse)
+            | Shape.UInt32 -> mkNumericPickler (fun (i: uint32) -> i.ToString(CultureInfo.InvariantCulture)) (UInt32.Parse)
+            | Shape.UInt64 -> mkNumericPickler (fun (i: uint64) -> i.ToString(CultureInfo.InvariantCulture)) (UInt64.Parse)
+            | Shape.UIntPtr -> failwith "nyi"
+            | Shape.BigInt -> mkNumericPickler (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) (Numerics.BigInteger.Parse)
+            | Shape.Single -> mkNumericPickler (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) (Single.Parse)
+            | Shape.Double -> mkNumericPickler (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) (Double.Parse)
+            | Shape.Decimal -> mkNumericPickler (fun (f: decimal) -> f.ToString(CultureInfo.InvariantCulture)) (Decimal.Parse)
+            | Shape.Char -> mkPickler (string >> Json.String) (fun _ json -> match json with Json.String s when s.Length > 0 -> Success s.[0] | _ -> Failure <| Exception("Expected a nonempty JSON string"))
             | Shape.String -> mkPickler (Json.String) (fun _ json -> match json with Json.String s -> Success s | _ -> Failure <| Exception("Expected a JSON string"))
             | Shape.TimeSpan
             | Shape.DateTime
@@ -369,7 +151,7 @@ module Json =
             | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
                 let memberHandler (field: IShapeMember<'Class>) =
                     let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
-                    field.Accept { new IMemberVisitor<'Class, ('Class -> Map<string, Json> -> Map<string, Json>) * ('Class -> Map<string, Json> -> JsonResult<'Class>)> with
+                    field.Accept { new IMemberVisitor<'Class, _> with
                     member _.Visit(shape: ShapeMember<'Class, 'Member>) =
                         let tP = getPickler()
                         (
@@ -380,7 +162,7 @@ module Json =
                                     | Success v -> Success (shape.Set o v)
                                     | Failure e -> if required then Failure <| Exception("Required field \"" + field.Label + "\" was not parsed successfully", e) else Success o
                                 else if required then Failure <| Exception("Required field \"" + field.Label + "\" was not provided") else Success o) )}
-                let (inserters: ('T -> Map<string, Json> -> Map<string, Json>)[]), (decoders: ('T -> Map<string, Json> -> JsonResult<'T>)[]) = shape.Fields |> Array.map memberHandler |> Array.unzip
+                let inserters, decoders = shape.Fields |> Array.map memberHandler |> Array.unzip
                 mkPickler
                     (fun o -> Array.fold (fun map inserter -> inserter(o)(map)) Map.empty inserters |> Json.Object)
                     (fun o json ->
