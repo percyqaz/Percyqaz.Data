@@ -5,7 +5,6 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Mapping.fs" />
     <Compile Include="Library.fs" />
   </ItemGroup>
 
