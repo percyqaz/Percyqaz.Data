@@ -1,4 +1,4 @@
 module Program = 
     let [<EntryPoint>] main _ =
-        printfn "%A" (("Hello", (), false) |> Percyqaz.Json.Mapping.toJson |> Percyqaz.Json.Mapping.fromJson<string * unit * bool>)
+        printfn "%s" ({|hello = "\n\t\u000E"; num = 5;  unitMember = ()|} |> Percyqaz.Json.toJson |> Percyqaz.Json.Formatting.formatJson)
         0
