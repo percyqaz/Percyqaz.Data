@@ -29,47 +29,53 @@ module Json =
         open FParsec
 
         //adapted directly from https://www.quanttec.com/fparsec/tutorial.html#parsing-json
-        let jvalue, jvalueRef = createParserForwardedToRef<Json, unit>()
+        let jsonParser = 
+            let jvalue, jvalueRef = createParserForwardedToRef<Json, unit>()
 
-        let jnull  = stringReturn "null" Json.Null
-        let jtrue  = stringReturn "true"  (Json.True)
-        let jfalse = stringReturn "false" (Json.False)
-        let jnumber = many1Satisfy (isNoneOf " \t\r\n") |>> Json.Number
+            let jnull  = stringReturn "null" Json.Null
+            let jtrue  = stringReturn "true"  (Json.True)
+            let jfalse = stringReturn "false" (Json.False)
+            let jnumber = many1Satisfy (isNoneOf " \t\r\n") |>> Json.Number
 
-        let str s = pstring s
-        let stringLiteral =
-            let escape =  anyOf "\"\\/bfnrt"
-                          |>> function
-                              | 'b' -> "\b"
-                              | 'f' -> "\u000C"
-                              | 'n' -> "\n"
-                              | 'r' -> "\r"
-                              | 't' -> "\t"
-                              | c   -> string c
-            let unicodeEscape =
-                let hex2int c = (int c &&& 15) + (int c >>> 6)*9
-                str "u" >>. pipe4 hex hex hex hex (fun h3 h2 h1 h0 ->
-                    (hex2int h3)*4096 + (hex2int h2)*256 + (hex2int h1)*16 + hex2int h0
-                    |> char |> string)
-            let escapedCharSnippet = str "\\" >>. (escape <|> unicodeEscape)
-            let normalCharSnippet  = manySatisfy (fun c -> c <> '"' && c <> '\\')
-            between (str "\"") (str "\"")
-                    (stringsSepBy normalCharSnippet escapedCharSnippet)
-        let ws = spaces
-        let jstring = stringLiteral |>> Json.String
-        let listBetweenStrings sOpen sClose pElement f =
-            between (str sOpen) (str sClose)
-                    (ws >>. sepBy (pElement .>> ws) (str "," >>. ws) |>> f)
-        let jlist   = listBetweenStrings "[" "]" jvalue Json.Array
-        let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
-        let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> Json.Object)
-        do jvalueRef := choice [jobject; jlist; jstring; jnumber; jtrue; jfalse; jnull]
+            let str s = pstring s
+            let stringLiteral =
+                let escape =  anyOf "\"\\/bfnrt"
+                              |>> function
+                                  | 'b' -> "\b"
+                                  | 'f' -> "\u000C"
+                                  | 'n' -> "\n"
+                                  | 'r' -> "\r"
+                                  | 't' -> "\t"
+                                  | c   -> string c
+                let unicodeEscape =
+                    let hex2int c = (int c &&& 15) + (int c >>> 6)*9
+                    str "u" >>. pipe4 hex hex hex hex (fun h3 h2 h1 h0 ->
+                        (hex2int h3)*4096 + (hex2int h2)*256 + (hex2int h1)*16 + hex2int h0
+                        |> char |> string)
+                let escapedCharSnippet = str "\\" >>. (escape <|> unicodeEscape)
+                let normalCharSnippet  = manySatisfy (fun c -> c <> '"' && c <> '\\')
+                between (str "\"") (str "\"")
+                        (stringsSepBy normalCharSnippet escapedCharSnippet)
+            let ws = spaces
+            let jstring = stringLiteral |>> Json.String
+            let listBetweenStrings sOpen sClose pElement f =
+                between (str sOpen) (str sClose)
+                        (ws >>. sepBy (pElement .>> ws) (str "," >>. ws) |>> f)
+            let jlist   = listBetweenStrings "[" "]" jvalue Json.Array
+            let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
+            let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> Json.Object)
+            do jvalueRef := choice [jobject; jlist; jstring; jnumber; jtrue; jfalse; jnull]
+            jvalue .>> eof
+
+        let parseStream name stream = runParserOnStream jsonParser () name stream (Text.Encoding.UTF8)
+        let parseFile path = runParserOnFile jsonParser () path (Text.Encoding.UTF8)
+        let parseString str = run jsonParser str
 
     module Formatting =
         open System.Text
         
         
-        let formatJson json = 
+        let stringBuildJson json = 
             let escapeChars =
                 [| '"'; '\\'; '\n'; '\r'; '\t'; '\b'; '\f'
                    '\u0000'; '\u0001'; '\u0002'; '\u0003'
@@ -130,7 +136,9 @@ module Json =
                         | (k, x)::xs ->
                             sb |> append "\"" |> append k |> append "\": " |> fun sb -> stringifyJson(sb)(x) |> append ", " |> f xs
                     sb |> append "{" |> f (Map.toList m) |> append "}"
-            (stringifyJson (StringBuilder()) json).ToString()
+            stringifyJson (StringBuilder()) json
+
+        let formatJson json = (stringBuildJson json).ToString()
 
         (*
             static member inline FromJson(_: ^T list, json: Json) =
@@ -194,8 +202,8 @@ module Json =
                         | Json.String "" | Json.Number "0" | Json.Null | Json.False -> Success false
                         | Json.String _ | Json.Number "1" | Json.True -> Success true
                         | _ -> Failure <| Exception("Expected a boolean value"))
-            | Shape.Byte
-            | Shape.SByte -> failwith "nyi"
+            | Shape.Byte -> mkNumericPickler (fun (i: byte) -> i.ToString(CultureInfo.InvariantCulture)) (Byte.Parse)
+            | Shape.SByte -> mkNumericPickler (fun (i: sbyte) -> i.ToString(CultureInfo.InvariantCulture)) (SByte.Parse)
             | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString(CultureInfo.InvariantCulture)) (Int16.Parse)
             | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString(CultureInfo.InvariantCulture)) (Int32.Parse)
             | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString(CultureInfo.InvariantCulture)) (Int64.Parse)
@@ -252,6 +260,9 @@ module Json =
                 let verifier =
                     let mi = typeof<'T>.GetMethod("Verify")
                     if isNull mi then id else (mi.CreateDelegate(typeof<Func<'T, 'T>>) :?> Func<'T, 'T>) |> fun d o -> d.Invoke(o)
+                let defaultRec =
+                    let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
+                    if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
                 let memberHandler (field: IShapeMember<'Class>) =
                     let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
                     field.Accept { new IMemberVisitor<'Class, _> with
@@ -269,6 +280,7 @@ module Json =
                 mkPickler
                     (fun o -> Array.fold (fun map inserter -> inserter(o)(map)) Map.empty inserters |> Json.Object)
                     (fun o json ->
+                        let o = if obj.ReferenceEquals(o, null) then defaultRec else o
                         match json with
                         | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o) |> JsonResult.map verifier
                         | _ -> Failure (Exception("Expected a JSON object")))
@@ -292,8 +304,29 @@ module Json =
 
             | _ -> failwith "This type is unsupported"
 
+    type JsonParseResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
+    module JsonParseResult =
+        open FParsec
+        let make t (res: ParserResult<Json, _>) =
+            match res with
+            | ParserResult.Success (v, _, _) ->
+                match (t v): JsonResult<'T> with
+                | JsonResult.Success v -> JsonParseResult.Success v
+                | JsonResult.Failure e -> JsonParseResult.MappingFailure e
+            | ParserResult.Failure (e, _, _) -> JsonParseResult.ParsingFailure (Exception(e))
+
     let toJson<'T>(obj: 'T) = Mapping.getPickler<'T>().Encode(obj)
+    let toString<'T>(obj: 'T) = obj |> toJson<'T> |> Formatting.formatJson
+    let toStream<'T>(stream: System.IO.Stream)(obj: 'T) =
+        use w = new System.IO.StreamWriter(stream)
+        w.Write(obj |> toJson<'T> |> Formatting.formatJson)
+    let toFile<'T>(file, overwrite)(obj: 'T) =
+        if overwrite || (System.IO.File.Exists(file) |> not) then
+            System.IO.File.WriteAllText(file, obj |> toJson<'T> |> Formatting.formatJson)
+        else
+            failwithf "Overwriting existing file %s is disallowed" file
+
     let fromJson<'T>(json: Json) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
-    let inline fromJsonRecord(json: Json): JsonResult<'T> =
-        let def = (^T: (static member Default: ^T)())
-        Mapping.getPickler<'T>().Decode(def)(json)
+    let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonParseResult.make fromJson<'T>
+    let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonParseResult.make fromJson<'T>
+    let fromFile<'T>(filePath) = filePath |> Parsing.parseFile |> JsonParseResult.make fromJson<'T>
