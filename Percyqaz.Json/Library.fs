@@ -35,18 +35,12 @@ module Json =
             let jnull  = stringReturn "null" Json.Null
             let jtrue  = stringReturn "true"  (Json.True)
             let jfalse = stringReturn "false" (Json.False)
-            let jnumber = many1Satisfy (isNoneOf " \t\r\n") |>> Json.Number
+            let jnumber = many1Satisfy (isNoneOf " \t\r\n}],") |>> Json.Number
 
             let str s = pstring s
             let stringLiteral =
-                let escape =  anyOf "\"\\/bfnrt"
-                              |>> function
-                                  | 'b' -> "\b"
-                                  | 'f' -> "\u000C"
-                                  | 'n' -> "\n"
-                                  | 'r' -> "\r"
-                                  | 't' -> "\t"
-                                  | c   -> string c
+                let escape = 
+                    anyOf "\"\\/bfnrt" |>> function | 'b' -> "\b" | 'f' -> "\u000C" | 'n' -> "\n" | 'r' -> "\r" | 't' -> "\t" | c -> string c
                 let unicodeEscape =
                     let hex2int c = (int c &&& 15) + (int c >>> 6)*9
                     str "u" >>. pipe4 hex hex hex hex (fun h3 h2 h1 h0 ->
@@ -64,7 +58,7 @@ module Json =
             let jlist   = listBetweenStrings "[" "]" jvalue Json.Array
             let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
             let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> Json.Object)
-            do jvalueRef := choice [jobject; jlist; jstring; jnumber; jtrue; jfalse; jnull]
+            do jvalueRef := choice [jobject; jlist; jstring; jtrue; jfalse; jnull; jnumber]
             jvalue .>> eof
 
         let parseStream name stream = runParserOnStream jsonParser () name stream (Text.Encoding.UTF8)
@@ -73,7 +67,6 @@ module Json =
 
     module Formatting =
         open System.Text
-        
         
         let stringBuildJson json = 
             let escapeChars =
@@ -139,7 +132,6 @@ module Json =
             stringifyJson (StringBuilder()) json
 
         let formatJson json = (stringBuildJson json).ToString()
-
         (*
             static member inline FromJson(_: ^T list, json: Json) =
                 let rec f (n, list) = 
@@ -169,34 +161,22 @@ module Json =
 
         let private cache = new TypeGenerationContext()
 
-        let private mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) =
-            {
-                Encode = unbox encode
-                Decode = unbox decode
-            }
+        let private mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
 
         let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
             mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | _ -> Exception("Expected a number") |> Failure)
 
         let rec getPickler<'T>() : JsonPickler<'T> =
-            let delay (c : Cell<JsonPickler<'T>>) : JsonPickler<'T> =
-                { Encode = fun o -> c.Value.Encode o
-                  Decode = fun o json -> c.Value.Decode o json }
+            let delay (c : Cell<JsonPickler<'T>>) : JsonPickler<'T> = { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json) }
             match cache.InitOrGetCachedValue<JsonPickler<'T>> delay with
-            | Cached(value = f) -> f
-            | NotCached t ->
-                let p = genPickler<'T>()
-                cache.Commit t p
+            | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p
 
         and private genPickler<'T>() : JsonPickler<'T> =
             match shapeof<'T> with
             | Shape.Unit ->
-                mkPickler
-                    (fun _ -> Json.Null)
-                    (fun _ _ -> Success ())
+                mkPickler (fun _ -> Json.Null) (fun _ _ -> Success ())
             | Shape.Bool ->
-                mkPickler
-                    (fun b -> if b then Json.True else Json.False)
+                mkPickler (fun b -> if b then Json.True else Json.False)
                     (fun _ json -> 
                         match json with
                         | Json.String "" | Json.Number "0" | Json.Null | Json.False -> Success false
@@ -291,17 +271,45 @@ module Json =
                         let tP = getPickler()
                         (fun o -> tP.Encode(shape.Get o)),
                         (fun o json ->
-                            match tP.Decode(shape.Get o)(json) with
+                            match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'a>)(json) with
                             | Success v -> Success (shape.Set o v)
                             | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
                 let caseHandler (case: ShapeFSharpUnionCase<'Class>) =
-                    case.Fields
-                    |> Array.map elemHandler
-                shape.UnionCases
-                |> Array.map caseHandler
-                |> ignore
-                failwith "nyi"
-
+                    let encoders, decoders = case.Fields |> Array.map elemHandler |> Array.unzip
+                    (
+                        (match case.Fields.Length with
+                        | 0 -> fun case -> Json.Null
+                        | 1 -> fun case -> encoders.[0](case)
+                        | _ -> fun case -> Array.map (fun e -> e(case)) encoders |> List.ofArray |> Json.Array),
+                        (match case.Fields.Length with
+                        | 0 -> fun _ _ -> Success <| case.CreateUninitialized()
+                        | 1 -> fun _ json -> decoders.[0](case.CreateUninitialized())json
+                        | n -> fun _ json ->
+                            match json with
+                            | Json.Array xs ->
+                                let xs = List.toArray xs
+                                if xs.Length = n then
+                                    Array.fold2 (fun o dec j -> match o with Success o -> dec o j | Failure e -> Failure e) (Success <| case.CreateUninitialized()) decoders xs
+                                else Failure <| Exception(sprintf "Expected a JSON array with %i elements for case %s" n case.CaseInfo.Name)
+                            | _ -> Failure <| Exception("Expected a JSON array for case " + case.CaseInfo.Name)),
+                        case.Arity)
+                let cases = shape.UnionCases |> Array.map caseHandler
+                mkPickler
+                    (fun o ->
+                        let t = shape.GetTag (o: 'T)
+                        let c = shape.UnionCases.[t].CaseInfo.Name
+                        let (e, _, a) = cases.[t]
+                        if a = 0 then Json.String c else [(c , e o)] |> Map.ofList |> Json.Object)
+                    (fun o json ->
+                        match json with
+                        | Json.String s ->
+                            let (_, d, a) = cases.[shape.GetTag s]
+                            if a = 0 then d o Json.Null else Failure (Exception(sprintf "Expected a JSON object because tag '%s' has additional data" s))
+                        | Json.Object m ->
+                            let (s, j) = Map.toList m |> List.head
+                            let (_, d, a) =  cases.[shape.GetTag s]
+                            d o j
+                        | _ -> Failure <| Exception("Expected a JSON object or a JSON string"))
             | _ -> failwith "This type is unsupported"
 
     type JsonParseResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
@@ -323,8 +331,7 @@ module Json =
     let toFile<'T>(file, overwrite)(obj: 'T) =
         if overwrite || (System.IO.File.Exists(file) |> not) then
             System.IO.File.WriteAllText(file, obj |> toJson<'T> |> Formatting.formatJson)
-        else
-            failwithf "Overwriting existing file %s is disallowed" file
+        else failwithf "Overwriting existing file %s is disallowed" file
 
     let fromJson<'T>(json: Json) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
     let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonParseResult.make fromJson<'T>
