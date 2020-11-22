@@ -40,6 +40,16 @@ type MyRecord = {
 And then any missing members are provided by the Default member.
 You can mark a field with `[<JsonRequired>]`, if so having it missing from the JSON data will result in an error.
 
+## Supported types:
+- Primitive types
+- Lists and arrays (F# and System.Collections.Generic)
+- Maps and Dictionaries
+- Tuples
+- Enums
+- Records
+- F# Unions
+POCO types are not supported
+
 ## Todo list (that I may never get through):
 - User defined picklers for new types
 - Tests and benchmarks
