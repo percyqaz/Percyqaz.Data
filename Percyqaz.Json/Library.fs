@@ -270,18 +270,15 @@ module Json =
                 let verifier =
                     let mi = typeof<'T>.GetMethod("Verify")
                     if isNull mi then id else (mi.CreateDelegate(typeof<Func<'T, 'T>>) :?> Func<'T, 'T>) |> fun d o -> d.Invoke(o)
-                let defaultRec =
+                let defaultRec() =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
-                    let v =
-                        if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
-                    fun () -> v //big bug here!!!
+                    if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
                 let memberHandler (field: IShapeMember<'Class>) =
                     let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
                     field.Accept { new IMemberVisitor<'Class, _> with
                     member _.Visit(shape: ShapeMember<'Class, _>) =
                         let tP = getPickler()
-                        (
-                            (fun o map -> Map.add field.Label (tP.Encode(shape.Get o)) map),
+                        ((fun o map -> Map.add field.Label (tP.Encode(shape.Get o)) map),
                             (fun o map ->
                                 if Map.containsKey(field.Label)(map) then
                                     match tP.Decode(shape.Get o)(map.[field.Label]) with
