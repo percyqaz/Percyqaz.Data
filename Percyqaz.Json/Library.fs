@@ -24,6 +24,10 @@ module Json =
             function
             | Success x -> Success (f x)
             | Failure e -> Failure e
+        let debug m: JsonResult<'T> -> JsonResult<'T> =
+            function
+            | Success x -> printfn "%s: Success %A" m x; Success x
+            | Failure e -> printfn "%s: Error %A" m e; Failure e
     
     module Parsing =
         open FParsec
@@ -132,22 +136,6 @@ module Json =
             stringifyJson (StringBuilder()) json
 
         let formatJson json = (stringBuildJson json).ToString()
-        (*
-            static member inline FromJson(_: ^T list, json: Json) =
-                let rec f (n, list) = 
-                    let d = Unchecked.defaultof<'T>
-                    match list with
-                    | [] -> Success []
-                    | (x :: xs) -> 
-                        match fromJson(d, x) with
-                        | Success y ->
-                            match f (n + 1, xs) with
-                            | Success ys -> Success (y :: ys)
-                            | Failure e -> Failure e
-                        | Failure e -> new Exception(sprintf "Error in item %i" n, e) |> Failure
-                match json with
-                | Json.Array xs -> f (0, xs)
-                | _ -> Exception("Expected a json array") |> Failure*)
 
     module Mapping =
 
@@ -162,6 +150,22 @@ module Json =
         let private cache = new TypeGenerationContext()
 
         let private mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
+
+        let private decodeList decoder json =
+            let o = Unchecked.defaultof<'t>
+            let rec f (n, list) =
+                match list with
+                | [] -> Success []
+                | (x :: xs) ->
+                    match decoder o x with
+                    | Success y ->
+                        match f (n + 1, xs) with
+                        | Success ys -> Success (y :: ys)
+                        | Failure e -> Failure e
+                    | Failure e -> Failure <| Exception(sprintf "Error in item %i" n, e)
+            match json with
+            | Json.Array xs -> f (0, xs)
+            | _ -> Failure <| Exception("Expected a JSON array")
 
         let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
             mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | _ -> Exception("Expected a number") |> Failure)
@@ -202,7 +206,11 @@ module Json =
             | Shape.DateTime
             | Shape.DateTimeOffset -> failwith "nyi"
 
-            | Shape.Enum t -> failwith "nyi"
+            | Shape.Enum s ->
+                s.Accept { new IEnumVisitor<JsonPickler<'T>> with 
+                member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
+                    let tP = getPickler<'u>()
+                    mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode(Unchecked.defaultof<'u>)json |> JsonResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
             | Shape.Tuple (:? ShapeTuple<'T> as shape) ->
                 let elemHandler (field: IShapeMember<'Class>) =
                     field.Accept { new IMemberVisitor<'Class, _> with
@@ -221,28 +229,52 @@ module Json =
                         | Json.Array xs when List.length xs = shape.Elements.Length -> 
                             Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
                         | _ -> Failure <| Exception("Expected a JSON array of length " + shape.Elements.Length.ToString()))
-            | Shape.Dictionary t -> failwith "nyi"
-            | Shape.Array t -> failwith "nyi"
-            | Shape.ResizeArray t -> failwith "nyi"
-            | Shape.FSharpList t -> failwith "nyi"
+            | Shape.FSharpMap s ->
+                s.Accept { new IFSharpMapVisitor<JsonPickler<'T>> with
+                member _.Visit<'K, 'V when 'K : comparison>() =
+                    if typeof<'K> <> typeof<string> then failwith "Map must have keys of type string"
+                    let tP = getPickler()
+                    mkPickler ((Map.map (fun _ -> tP.Encode)) >> Json.Object)
+                        (fun _ json ->
+                            match json with
+                            | Json.Object m ->
+                                m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
+                                |> List.fold
+                                    (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
+                                |> JsonResult.map Map.ofList
+                            | _ -> Failure <| Exception("Expected a JSON object")) }
+            | Shape.Dictionary s ->
+                s.Accept { new IDictionaryVisitor<JsonPickler<'T>> with
+                member _.Visit<'K, 'V when 'K : equality>() =
+                    if typeof<'K> <> typeof<string> then failwith "Dictionary must have keys of type string"
+                    let tP = getPickler()
+                    mkPickler (fun (d: System.Collections.Generic.Dictionary<string, 'V>) -> d |> Seq.map (fun kv -> (kv.Key, tP.Encode kv.Value)) |> Map.ofSeq |> Json.Object)
+                        (fun _ json ->
+                            match json with
+                            | Json.Object m ->
+                                m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
+                                |> List.fold
+                                    (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
+                                |> JsonResult.map Map.ofList |> JsonResult.map (System.Collections.Generic.Dictionary)
+                            | _ -> Failure <| Exception("Expected a JSON object")) }
+            | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map Array.ofList) }
+            | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map ResizeArray) }
+            | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.map tP.Encode >> Json.Array) (fun _ -> decodeList tP.Decode) }
             | Shape.FSharpOption s ->
-                s.Element.Accept {
-                    new ITypeVisitor<JsonPickler<'T>> with
-                        member _.Visit<'t> () =
-                            let tP = getPickler<'t>()
-                            mkPickler
-                                (function Some v -> tP.Encode(v) | None -> Json.Null)
-                                (fun _ json ->
-                                    match json with
-                                    | Json.Null -> Success None
-                                    | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonResult.map(Some)) }
+                s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with
+                member _.Visit<'t> () =
+                    let tP = getPickler()
+                    mkPickler (function Some v -> tP.Encode(v) | None -> Json.Null)
+                        (fun _ json -> match json with Json.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonResult.map(Some)) }
             | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
                 let verifier =
                     let mi = typeof<'T>.GetMethod("Verify")
                     if isNull mi then id else (mi.CreateDelegate(typeof<Func<'T, 'T>>) :?> Func<'T, 'T>) |> fun d o -> d.Invoke(o)
                 let defaultRec =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
-                    if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
+                    let v =
+                        if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
+                    fun () -> v //big bug here!!!
                 let memberHandler (field: IShapeMember<'Class>) =
                     let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
                     field.Accept { new IMemberVisitor<'Class, _> with
@@ -260,7 +292,7 @@ module Json =
                 mkPickler
                     (fun o -> Array.fold (fun map inserter -> inserter(o)(map)) Map.empty inserters |> Json.Object)
                     (fun o json ->
-                        let o = if obj.ReferenceEquals(o, null) then defaultRec else o
+                        let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                         match json with
                         | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o) |> JsonResult.map verifier
                         | _ -> Failure (Exception("Expected a JSON object")))
@@ -278,7 +310,7 @@ module Json =
                     let encoders, decoders = case.Fields |> Array.map elemHandler |> Array.unzip
                     (
                         (match case.Fields.Length with
-                        | 0 -> fun case -> Json.Null
+                        | 0 -> fun _ -> Json.Null
                         | 1 -> fun case -> encoders.[0](case)
                         | _ -> fun case -> Array.map (fun e -> e(case)) encoders |> List.ofArray |> Json.Array),
                         (match case.Fields.Length with
