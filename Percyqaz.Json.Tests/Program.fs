@@ -12,6 +12,7 @@ module Program =
 
     type RecordTest = {
         A: TupleTest
+        [<Json.Required>]
         B: Map<string, UnionTest>
         C: UnionTest
     } with

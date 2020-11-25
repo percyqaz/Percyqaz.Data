@@ -5,7 +5,7 @@ open System.Globalization
 
 module Json =
 
-    type JsonRequiredAttribute() = inherit Attribute()
+    type RequiredAttribute() = inherit Attribute()
 
     type Json =
     | Object of Map<string, Json>
@@ -221,7 +221,7 @@ module Json =
                         let tP = getPickler()
                         (fun o -> tP.Encode(shape.Get o)),
                         (fun o json ->
-                            match tP.Decode(shape.Get o)(json) with
+                            match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'a>)(json) with
                             | Success v -> Success (shape.Set o v)
                             | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
                 let encoders, decoders = shape.Elements |> Array.map elemHandler |> Array.unzip
@@ -274,7 +274,7 @@ module Json =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
                     if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
                 let memberHandler (field: IShapeMember<'Class>) =
-                    let required = field.MemberInfo.GetCustomAttributes(typeof<JsonRequiredAttribute>, true).Length > 0
+                    let required = field.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0
                     field.Accept { new IMemberVisitor<'Class, _> with
                     member _.Visit(shape: ShapeMember<'Class, _>) =
                         let tP = getPickler()
@@ -300,7 +300,7 @@ module Json =
                         let tP = getPickler()
                         (fun o -> tP.Encode(shape.Get o)),
                         (fun o json ->
-                            match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'a>)(json) with
+                            match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'b>)(json) with
                             | Success v -> Success (shape.Set o v)
                             | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
                 let caseHandler (case: ShapeFSharpUnionCase<'Class>) =
@@ -332,12 +332,14 @@ module Json =
                     (fun o json ->
                         match json with
                         | Json.String s ->
-                            let (_, d, a) = cases.[shape.GetTag s]
-                            if a = 0 then d o Json.Null else Failure (Exception(sprintf "Expected a JSON object because tag '%s' has additional data" s))
+                            try let (_, d, a) = cases.[shape.GetTag s]
+                                if a = 0 then d o Json.Null else Failure (Exception(sprintf "Expected a JSON object because tag '%s' has additional data" s))
+                            with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
                         | Json.Object m ->
                             let (s, j) = Map.toList m |> List.head
-                            let (_, d, a) =  cases.[shape.GetTag s]
-                            d o j
+                            try let (_, d, a) =  cases.[shape.GetTag s]
+                                d o j
+                            with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
                         | _ -> Failure <| Exception("Expected a JSON object or a JSON string"))
             | _ ->
                 failwithf "The type '%O' is unsupported; Declare a static property GetPickler to implement your own behaviour" typeof<'T>
