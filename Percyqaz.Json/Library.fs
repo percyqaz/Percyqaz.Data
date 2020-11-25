@@ -28,6 +28,8 @@ module Json =
             function
             | Success x -> printfn "%s: Success %A" m x; Success x
             | Failure e -> printfn "%s: Error %A" m e; Failure e
+
+    let jsonErr(desc, json) = Exception(sprintf "%s\nReceived JSON: %A" desc json) |> Failure
     
     module Parsing =
         open FParsec
@@ -165,7 +167,7 @@ module Json =
                     | Failure e -> Failure <| Exception(sprintf "Error in item %i" n, e)
             match json with
             | Json.Array xs -> f (0, xs)
-            | _ -> Failure <| Exception("Expected a JSON array")
+            | _ -> jsonErr("Expected a JSON array", json)
 
         let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
             mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | _ -> Exception("Expected a number") |> Failure)
@@ -188,7 +190,7 @@ module Json =
                         match json with
                         | Json.String "" | Json.Number "0" | Json.Null | Json.False -> Success false
                         | Json.String _ | Json.Number "1" | Json.True -> Success true
-                        | _ -> Failure <| Exception("Expected a boolean value"))
+                        | _ -> jsonErr("Expected a boolean value", json))
             | Shape.Byte -> mkNumericPickler (fun (i: byte) -> i.ToString(CultureInfo.InvariantCulture)) (Byte.Parse)
             | Shape.SByte -> mkNumericPickler (fun (i: sbyte) -> i.ToString(CultureInfo.InvariantCulture)) (SByte.Parse)
             | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString(CultureInfo.InvariantCulture)) (Int16.Parse)
@@ -231,7 +233,7 @@ module Json =
                         match json with 
                         | Json.Array xs when List.length xs = shape.Elements.Length -> 
                             Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
-                        | _ -> Failure <| Exception("Expected a JSON array of length " + shape.Elements.Length.ToString()))
+                        | _ -> jsonErr("Expected a JSON array of length " + shape.Elements.Length.ToString(), json))
             | Shape.FSharpMap s ->
                 s.Accept { new IFSharpMapVisitor<JsonPickler<'T>> with
                 member _.Visit<'K, 'V when 'K : comparison>() =
@@ -245,7 +247,7 @@ module Json =
                                 |> List.fold
                                     (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
                                 |> JsonResult.map Map.ofList
-                            | _ -> Failure <| Exception("Expected a JSON object")) }
+                            | _ -> jsonErr("Expected a JSON object", json)) }
             | Shape.Dictionary s ->
                 s.Accept { new IDictionaryVisitor<JsonPickler<'T>> with
                 member _.Visit<'K, 'V when 'K : equality>() =
@@ -259,7 +261,7 @@ module Json =
                                 |> List.fold
                                     (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
                                 |> JsonResult.map Map.ofList |> JsonResult.map (System.Collections.Generic.Dictionary)
-                            | _ -> Failure <| Exception("Expected a JSON object")) }
+                            | _ -> jsonErr("Expected a JSON object", json)) }
             | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map Array.ofList) }
             | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map ResizeArray) }
             | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> Json.Array) (fun _ -> decodeList tP.Decode) }
@@ -292,7 +294,7 @@ module Json =
                         let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                         match json with
                         | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
-                        | _ -> Failure (Exception("Expected a JSON object")))
+                        | _ -> jsonErr("Expected a JSON object", json))
             | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
                 let elemHandler (field: IShapeMember<'Class>) =
                     field.Accept { new IMemberVisitor<'Class, _> with
@@ -319,8 +321,8 @@ module Json =
                                 let xs = List.toArray xs
                                 if xs.Length = n then
                                     Array.fold2 (fun o dec j -> match o with Success o -> dec o j | Failure e -> Failure e) (Success <| case.CreateUninitialized()) decoders xs
-                                else Failure <| Exception(sprintf "Expected a JSON array with %i elements for case %s" n case.CaseInfo.Name)
-                            | _ -> Failure <| Exception("Expected a JSON array for case " + case.CaseInfo.Name)),
+                                else jsonErr(sprintf "Expected a JSON array with %i elements for case %s" n case.CaseInfo.Name, json)
+                            | _ -> jsonErr("Expected a JSON array for case " + case.CaseInfo.Name, json)),
                         case.Arity)
                 let cases = shape.UnionCases |> Array.map caseHandler
                 mkPickler
@@ -333,14 +335,14 @@ module Json =
                         match json with
                         | Json.String s ->
                             try let (_, d, a) = cases.[shape.GetTag s]
-                                if a = 0 then d o Json.Null else Failure (Exception(sprintf "Expected a JSON object because tag '%s' has additional data" s))
+                                if a = 0 then d o Json.Null else jsonErr(sprintf "Expected a JSON object because tag '%s' has additional data" s, json)
                             with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
                         | Json.Object m ->
                             let (s, j) = Map.toList m |> List.head
                             try let (_, d, a) =  cases.[shape.GetTag s]
                                 d o j
                             with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
-                        | _ -> Failure <| Exception("Expected a JSON object or a JSON string"))
+                        | _ -> jsonErr("Expected a JSON object or a JSON string", json))
             | _ ->
                 failwithf "The type '%O' is unsupported; Declare a static property GetPickler to implement your own behaviour" typeof<'T>
 
