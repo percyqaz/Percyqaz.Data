@@ -1,4 +1,4 @@
-﻿namespace Percyqaz
+﻿namespace Percyqaz.Json
 
 open System
 open System.Globalization
@@ -149,7 +149,7 @@ module Json =
 
         let private cache = new TypeGenerationContext()
 
-        let private mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
+        let mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
 
         let private decodeList decoder json =
             let o = Unchecked.defaultof<'t>
@@ -176,6 +176,9 @@ module Json =
             | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p
 
         and private genPickler<'T>() : JsonPickler<'T> =
+            let mi = typeof<'T>.GetProperty("GetPickler", typeof<JsonPickler<'T>>)
+            if isNull mi |> not then mi.GetValue(null) :?> JsonPickler<'T>
+            else
             match shapeof<'T> with
             | Shape.Unit ->
                 mkPickler (fun _ -> Json.Null) (fun _ _ -> Success ())
@@ -257,9 +260,9 @@ module Json =
                                     (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
                                 |> JsonResult.map Map.ofList |> JsonResult.map (System.Collections.Generic.Dictionary)
                             | _ -> Failure <| Exception("Expected a JSON object")) }
-            | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map Array.ofList) }
-            | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map ResizeArray) }
-            | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler() in mkPickler (List.map tP.Encode >> Json.Array) (fun _ -> decodeList tP.Decode) }
+            | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map Array.ofList) }
+            | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map ResizeArray) }
+            | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> Json.Array) (fun _ -> decodeList tP.Decode) }
             | Shape.FSharpOption s ->
                 s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with
                 member _.Visit<'t> () =
@@ -267,9 +270,6 @@ module Json =
                     mkPickler (function Some v -> tP.Encode(v) | None -> Json.Null)
                         (fun _ json -> match json with Json.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonResult.map(Some)) }
             | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
-                let verifier =
-                    let mi = typeof<'T>.GetMethod("Verify")
-                    if isNull mi then id else (mi.CreateDelegate(typeof<Func<'T, 'T>>) :?> Func<'T, 'T>) |> fun d o -> d.Invoke(o)
                 let defaultRec() =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
                     if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
@@ -291,7 +291,7 @@ module Json =
                     (fun o json ->
                         let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                         match json with
-                        | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o) |> JsonResult.map verifier
+                        | Json.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
                         | _ -> Failure (Exception("Expected a JSON object")))
             | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
                 let elemHandler (field: IShapeMember<'Class>) =
@@ -339,7 +339,8 @@ module Json =
                             let (_, d, a) =  cases.[shape.GetTag s]
                             d o j
                         | _ -> Failure <| Exception("Expected a JSON object or a JSON string"))
-            | _ -> failwith "This type is unsupported"
+            | _ ->
+                failwithf "The type '%O' is unsupported; Declare a static property GetPickler to implement your own behaviour" typeof<'T>
 
     type JsonParseResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
     module JsonParseResult =

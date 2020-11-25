@@ -1,3 +1,5 @@
+open Percyqaz.Json
+
 module Program = 
 
     type EnumTest =
@@ -6,39 +8,32 @@ module Program =
     | Three = 4
     | Four = 8
 
-    type TestRec2 = {
-        A: string
-        B: int
+    type TupleTest = EnumTest array * (int * string) * string list * float array
+
+    type RecordTest = {
+        A: TupleTest
+        B: Map<string, UnionTest>
+        C: UnionTest
     } with
         static member Default = {
-            A = ""
-            B = 0
+            A = ([|EnumTest.One; EnumTest.Two ||| EnumTest.Three|], (0, "EEEE"), [], [||])
+            B = Map.ofList [("Hello", One); ("World", Two (5, true))]
+            C =
+                let tup = ([||], (1, "A"), [], [||])
+                Four ({A = tup; B = Map.empty; C = Three "AAAA"}, {A = tup; B = Map.empty; C = Three "DDDD"})
         }
 
-    type TestRec = {
-        Hello2: string
-        world: double
-        Rec: TestRec2
-        Field: EnumTest
-    } with
-        static member Default = {
-            Hello2 = "hello"
-            world = 1.0
-            Field = EnumTest.Three ||| EnumTest.Four
-            Rec = { A = "h"; B = 1 }
-        }
-
-    type UnionTest =
+    and UnionTest =
     | One
     | Two of (int * bool)
     | Three of string
-    | Four of TestRec * TestRec
+    | Four of RecordTest * RecordTest
 
     let idPrint x =
         printfn "%A" x
         id x
 
     let [<EntryPoint>] main _ =
-        printfn "%A" (Four ({Hello2 = "wtf"; world = 1.0; Field = EnumTest.Two; Rec = TestRec2.Default}, TestRec.Default) |> Percyqaz.Json.toJson |> Percyqaz.Json.Formatting.formatJson |> idPrint |> Percyqaz.Json.fromString<UnionTest>)
-        printfn "%A" ("""{"Four": [{}, {}]}""" |> Percyqaz.Json.fromString<UnionTest>)
+        printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
+        printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
         0
