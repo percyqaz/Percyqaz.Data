@@ -30,6 +30,15 @@ module Program =
     | Three of string
     | Four of RecordTest * RecordTest
 
+    type POCOTest<'T>(defaultValue: 'T, value: 'T) =
+        member this.Value = value
+        member this.DefaultValue = defaultValue
+        static member Pickler: Json.Mapping.JsonPickler<POCOTest<'T>> =
+            let tP = Json.Mapping.getPickler<'T>()
+            Json.Mapping.mkPickler
+                (fun (o: POCOTest<'T>) -> tP.Encode(o.Value))
+                (fun (o: POCOTest<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.JsonResult.map (fun v -> POCOTest(o.DefaultValue, v)))
+
     let idPrint x =
         printfn "%A" x
         id x
@@ -37,4 +46,5 @@ module Program =
     let [<EntryPoint>] main _ =
         printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
+        printfn "%A" (POCOTest(3,5) |> Json.toString)
         0

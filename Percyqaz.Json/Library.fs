@@ -178,7 +178,7 @@ module Json =
             | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p
 
         and private genPickler<'T>() : JsonPickler<'T> =
-            let mi = typeof<'T>.GetProperty("GetPickler", typeof<JsonPickler<'T>>)
+            let mi = typeof<'T>.GetProperty("Pickler", typeof<JsonPickler<'T>>)
             if isNull mi |> not then mi.GetValue(null) :?> JsonPickler<'T>
             else
             match shapeof<'T> with
@@ -344,7 +344,7 @@ module Json =
                             with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
                         | _ -> jsonErr("Expected a JSON object or a JSON string", json))
             | _ ->
-                failwithf "The type '%O' is unsupported; Declare a static property GetPickler to implement your own behaviour" typeof<'T>
+                failwithf "The type '%O' is unsupported; Declare a static property Pickler to implement your own behaviour" typeof<'T>
 
     type JsonParseResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
     module JsonParseResult =
