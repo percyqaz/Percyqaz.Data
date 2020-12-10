@@ -29,7 +29,7 @@ let deserializedOutput = Json.fromFile<'T>(filepath)
 let str = Json.toString(...)
 ```
 
-Records must implement a static member Default:
+Records must implement a static member `Default`:
 ```
 type MyRecord = {
   A: string
@@ -48,8 +48,26 @@ You can mark a field with `[<JsonRequired>]`, if so having it missing from the J
 - Enums
 - Records
 - F# Unions
-POCO types are not supported
 
-## Todo list (that I may never get through):
-- User defined picklers for new types
-- Tests and benchmarks
+## Custom picklers for unsupported types:
+
+POCO types are not supported by themselves.
+To add custom support, define a static member `Pickler` for your type that creates a JsonPickler of your type.
+
+```
+open Percyqaz.Json
+
+type Example<'T>(defaultValue: 'T, value: 'T) =
+    member this.Value = value
+    member this.DefaultValue = defaultValue
+    static member Pickler: Json.Mapping.JsonPickler<Example<'T>> =
+        let tP = Json.Mapping.getPickler<'T>()
+        Json.Mapping.mkPickler
+            (fun (o: Example<'T>) -> tP.Encode(o.Value))
+            (fun (o: Example<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.JsonResult.map (fun v -> POCOTest(o.DefaultValue, v)))
+```
+You can look through Library.fs for more examples on building both simple picklers and for polymorphic types
+
+## Todo list:
+- Proper unit tests and benchmarks
+- Proper example code and some cleanup for readability
