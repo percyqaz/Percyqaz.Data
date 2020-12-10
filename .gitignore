@@ -9,3 +9,4 @@
 /.vs/Percyqaz.Json
 /Percyqaz.Json/bin/Release/netstandard2.0
 /Percyqaz.Json/bin
+/Percyqaz.Json.Tests/bin/Release/netcoreapp3.1

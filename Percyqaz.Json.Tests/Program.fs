@@ -41,6 +41,10 @@ module Program =
                 (fun (o: POCOTest<'T>) -> tP.Encode(o.Value))
                 (fun (o: POCOTest<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.MappingResult.map (fun v -> POCOTest(o.DefaultValue, v)))
 
+    type POCOExtension(a, b) =
+        inherit POCOTest<int>(a, b)
+        static member Pickler =  POCOTest<int>.Pickler
+
     let idPrint x =
         printfn "%A" x
         id x
@@ -48,8 +52,6 @@ module Program =
     let [<EntryPoint>] main _ =
         printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
-        printfn "%A" (POCOTest(3,5) |> Json.toString)
-        match (Json.fromString<System.DateTime>("\"2020-11-23T22:54:53.3980269+00:00\"")) with
-        | JsonResult.Success o -> printfn "%A" o
-        | _ -> ()
+        //printfn "%A" (POCOExtension(3,5) |> Json.toString)
+        (Json.fromString<System.DateTime>("\"2020-12-02T00:13:37.016899+00:00\"")) |> Json.JsonResult.valueOrRaise |> printfn "%A"
         0

@@ -119,7 +119,7 @@ module Json =
                 function
                 | Json.Null -> sb.Append "null"
                 | Json.True -> sb.Append "true"
-                | Json.False -> sb.Append "false"
+                | Json.False -> sb.Append "false" 
                 | Json.Number s -> sb.Append s
                 | Json.String s -> sb |> append "\"" |> writeString s |> append "\""
                 | Json.Array xs ->
@@ -131,9 +131,9 @@ module Json =
                         match xs with
                         | [] -> sb
                         | (k, x)::[] ->
-                            sb |> append "\"" |> append k |> append "\": " |> fun sb -> stringifyJson(sb)(x)
+                            sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson(sb)(x)
                         | (k, x)::xs ->
-                            sb |> append "\"" |> append k |> append "\": " |> fun sb -> stringifyJson(sb)(x) |> append ", " |> f xs
+                            sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson(sb)(x) |> append ", " |> f xs
                     sb |> append "{" |> f (Map.toList m) |> append "}"
             stringifyJson (StringBuilder()) json
 
@@ -178,9 +178,8 @@ module Json =
             | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p
 
         and private genPickler<'T>() : JsonPickler<'T> =
-            let mi = typeof<'T>.GetProperty("Pickler", typeof<JsonPickler<'T>>)
-            if isNull mi |> not then mi.GetValue(null) :?> JsonPickler<'T>
-            else
+            let mi = typeof<'T>.GetProperty("Pickler")
+            if isNull mi |> not then mi.GetValue(null) :?> JsonPickler<'T> else
             match shapeof<'T> with
             | Shape.Unit ->
                 mkPickler (fun _ -> Json.Null) (fun _ _ -> Success ())
@@ -212,7 +211,7 @@ module Json =
                 mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> Json.String)
                     (fun _ json -> 
                         match json with
-                        | Json.String s -> (try DateTime.ParseExact (s, [| "s"; "r"; "o" |], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal) |> Success with err -> Failure err)
+                        | Json.String s -> (try DateTime.ParseExact (s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal) |> Success with err -> Failure err)
                         | json -> jsonErr("Expected a formatted DateTime string", json))
             | Shape.DateTimeOffset -> 
                 mkPickler (fun (dt: DateTimeOffset) -> dt.ToString("o", CultureInfo.InvariantCulture) |> Json.String)
@@ -281,11 +280,12 @@ module Json =
                     mkPickler (function Some v -> tP.Encode(v) | None -> Json.Null)
                         (fun _ json -> match json with Json.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> MappingResult.map(Some)) }
             | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
+                let allRequired = typeof<'T>.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0
                 let defaultRec() =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
                     if isNull mi then failwithf "Record type %A must have a static property Default that provides default values" typeof<'T> else mi.GetValue(null) :?> 'T
                 let memberHandler (field: IShapeMember<'Class>) =
-                    let required = field.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0
+                    let required = allRequired || field.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0
                     field.Accept { new IMemberVisitor<'Class, _> with
                     member _.Visit(shape: ShapeMember<'Class, _>) =
                         let tP = getPickler()
@@ -387,4 +387,3 @@ module Json =
     let fromFile<'T>(filePath) = filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T>
 
 type JsonResult<'T> = Json.JsonResult<'T>
-module JsonResult = Json.JsonResult
