@@ -15,13 +15,15 @@ module Program =
         [<Json.Required>]
         B: Map<string, UnionTest>
         C: UnionTest
+        D: System.DateTime
     } with
         static member Default = {
             A = ([|EnumTest.One; EnumTest.Two ||| EnumTest.Three|], (0, "EEEE"), [], [||])
             B = Map.ofList [("Hello", One); ("World", Two (5, true))]
             C =
                 let tup = ([||], (1, "A"), [], [||])
-                Four ({A = tup; B = Map.empty; C = Three "AAAA"}, {A = tup; B = Map.empty; C = Three "DDDD"})
+                Four ({A = tup; B = Map.empty; C = Three "AAAA"; D = System.DateTime.Now }, {A = tup; B = Map.empty; C = Three "DDDD"; D = System.DateTime.Now })
+            D = System.DateTime.Now
         }
 
     and UnionTest =
@@ -47,4 +49,5 @@ module Program =
         printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
         printfn "%A" (POCOTest(3,5) |> Json.toString)
+        printfn "%A" (Json.fromString<System.DateTime>("\"2020-11-23T22:54:53.3980269+00:00\""))
         0

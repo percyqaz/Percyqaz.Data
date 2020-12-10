@@ -2,6 +2,11 @@
 
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
+    <GeneratePackageOnBuild>true</GeneratePackageOnBuild>
+    <Authors>Percyqaz</Authors>
+    <Company />
+    <PackageProjectUrl>https://github.com/percyqaz/Percyqaz.Json</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/percyqaz/Percyqaz.Json</RepositoryUrl>
   </PropertyGroup>
 
   <ItemGroup>

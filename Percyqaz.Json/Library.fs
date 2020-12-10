@@ -170,7 +170,7 @@ module Json =
             | _ -> jsonErr("Expected a JSON array", json)
 
         let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
-            mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | _ -> Exception("Expected a number") |> Failure)
+            mkPickler (encode >> Json.Number) (fun _ json -> match json with Json.String s | Json.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | json -> jsonErr("Expected a number", json))
 
         let rec getPickler<'T>() : JsonPickler<'T> =
             let delay (c : Cell<JsonPickler<'T>>) : JsonPickler<'T> = { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json) }
@@ -194,23 +194,32 @@ module Json =
             | Shape.Byte -> mkNumericPickler (fun (i: byte) -> i.ToString(CultureInfo.InvariantCulture)) (Byte.Parse)
             | Shape.SByte -> mkNumericPickler (fun (i: sbyte) -> i.ToString(CultureInfo.InvariantCulture)) (SByte.Parse)
             | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString(CultureInfo.InvariantCulture)) (Int16.Parse)
-            | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString(CultureInfo.InvariantCulture)) (Int32.Parse)
-            | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString(CultureInfo.InvariantCulture)) (Int64.Parse)
-            | Shape.IntPtr -> failwith "nyi"
             | Shape.UInt16 -> mkNumericPickler (fun (i: uint16) -> i.ToString(CultureInfo.InvariantCulture)) (UInt16.Parse)
+            | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString(CultureInfo.InvariantCulture)) (Int32.Parse)
             | Shape.UInt32 -> mkNumericPickler (fun (i: uint32) -> i.ToString(CultureInfo.InvariantCulture)) (UInt32.Parse)
+            | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString(CultureInfo.InvariantCulture)) (Int64.Parse)
             | Shape.UInt64 -> mkNumericPickler (fun (i: uint64) -> i.ToString(CultureInfo.InvariantCulture)) (UInt64.Parse)
+            | Shape.IntPtr -> failwith "nyi"
             | Shape.UIntPtr -> failwith "nyi"
             | Shape.BigInt -> mkNumericPickler (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) (Numerics.BigInteger.Parse)
             | Shape.Single -> mkNumericPickler (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) (Single.Parse)
             | Shape.Double -> mkNumericPickler (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) (Double.Parse)
             | Shape.Decimal -> mkNumericPickler (fun (f: decimal) -> f.ToString(CultureInfo.InvariantCulture)) (Decimal.Parse)
-            | Shape.Char -> mkPickler (string >> Json.String) (fun _ json -> match json with Json.String s when s.Length > 0 -> Success s.[0] | _ -> Failure <| Exception("Expected a nonempty JSON string"))
-            | Shape.String -> mkPickler (Json.String) (fun _ json -> match json with Json.String s -> Success s | _ -> Failure <| Exception("Expected a JSON string"))
-            | Shape.TimeSpan
-            | Shape.DateTime
-            | Shape.DateTimeOffset -> failwith "nyi"
-
+            | Shape.Char -> mkPickler (string >> Json.String) (fun _ json -> match json with Json.String s when s.Length > 0 -> Success s.[0] | json -> jsonErr("Expected a nonempty JSON string", json))
+            | Shape.String -> mkPickler (Json.String) (fun _ json -> match json with Json.String s -> Success s | json -> jsonErr("Expected a JSON string", json))
+            | Shape.TimeSpan -> failwith "nyi"
+            | Shape.DateTime ->
+                mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> Json.String)
+                    (fun _ json -> 
+                        match json with
+                        | Json.String s -> (try DateTime.ParseExact (s, [| "s"; "r"; "o" |], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal) |> Success with err -> Failure err)
+                        | json -> jsonErr("Expected a formatted DateTime string", json))
+            | Shape.DateTimeOffset -> 
+                mkPickler (fun (dt: DateTimeOffset) -> dt.ToString("o", CultureInfo.InvariantCulture) |> Json.String)
+                    (fun _ json ->
+                        match json with
+                        | Json.String s -> (try DateTimeOffset.ParseExact (s, [| "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'"; "o"; "r" |], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) |> Success with err -> Failure err)
+                        | _ -> jsonErr("Expected a formatted DateTime string", json))
             | Shape.Enum s ->
                 s.Accept { new IEnumVisitor<JsonPickler<'T>> with 
                 member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
