@@ -7,6 +7,7 @@
     <Company />
     <PackageProjectUrl>https://github.com/percyqaz/Percyqaz.Json</PackageProjectUrl>
     <RepositoryUrl>https://github.com/percyqaz/Percyqaz.Json</RepositoryUrl>
+    <PackageLicenseFile>LICENSE</PackageLicenseFile>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +17,13 @@
   <ItemGroup>
     <PackageReference Include="FParsec" Version="1.1.1" />
     <PackageReference Include="TypeShape" Version="9.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\LICENSE">
+      <Pack>True</Pack>
+      <PackagePath></PackagePath>
+    </None>
   </ItemGroup>
 
 </Project>

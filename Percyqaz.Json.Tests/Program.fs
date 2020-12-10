@@ -39,7 +39,7 @@ module Program =
             let tP = Json.Mapping.getPickler<'T>()
             Json.Mapping.mkPickler
                 (fun (o: POCOTest<'T>) -> tP.Encode(o.Value))
-                (fun (o: POCOTest<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.JsonResult.map (fun v -> POCOTest(o.DefaultValue, v)))
+                (fun (o: POCOTest<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.MappingResult.map (fun v -> POCOTest(o.DefaultValue, v)))
 
     let idPrint x =
         printfn "%A" x
@@ -49,5 +49,7 @@ module Program =
         printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
         printfn "%A" (POCOTest(3,5) |> Json.toString)
-        printfn "%A" (Json.fromString<System.DateTime>("\"2020-11-23T22:54:53.3980269+00:00\""))
+        match (Json.fromString<System.DateTime>("\"2020-11-23T22:54:53.3980269+00:00\"")) with
+        | JsonResult.Success o -> printfn "%A" o
+        | _ -> ()
         0

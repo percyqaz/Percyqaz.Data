@@ -18,13 +18,13 @@ module Json =
     with
         static member ToJson(json: Json) = json
         
-    type JsonResult<'T> = Success of 'T | Failure of Exception
-    module JsonResult =
+    type MappingResult<'T> = Success of 'T | Failure of Exception
+    module MappingResult =
         let map f =
             function
             | Success x -> Success (f x)
             | Failure e -> Failure e
-        let debug m: JsonResult<'T> -> JsonResult<'T> =
+        let debug m: MappingResult<'T> -> MappingResult<'T> =
             function
             | Success x -> printfn "%s: Success %A" m x; Success x
             | Failure e -> printfn "%s: Error %A" m e; Failure e
@@ -146,12 +146,12 @@ module Json =
 
         type JsonPickler<'T> = {
             Encode: 'T -> Json
-            Decode: 'T -> Json -> JsonResult<'T>
+            Decode: 'T -> Json -> MappingResult<'T>
         }
 
         let private cache = new TypeGenerationContext()
 
-        let mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> JsonResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
+        let mkPickler (encode: 'T -> Json) (decode: 'T -> Json -> MappingResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
 
         let private decodeList decoder json =
             let o = Unchecked.defaultof<'t>
@@ -224,7 +224,7 @@ module Json =
                 s.Accept { new IEnumVisitor<JsonPickler<'T>> with 
                 member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
                     let tP = getPickler<'u>()
-                    mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode(Unchecked.defaultof<'u>)json |> JsonResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
+                    mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode(Unchecked.defaultof<'u>)json |> MappingResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
             | Shape.Tuple (:? ShapeTuple<'T> as shape) ->
                 let elemHandler (field: IShapeMember<'Class>) =
                     field.Accept { new IMemberVisitor<'Class, _> with
@@ -255,7 +255,7 @@ module Json =
                                 m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
                                 |> List.fold
                                     (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
-                                |> JsonResult.map Map.ofList
+                                |> MappingResult.map Map.ofList
                             | _ -> jsonErr("Expected a JSON object", json)) }
             | Shape.Dictionary s ->
                 s.Accept { new IDictionaryVisitor<JsonPickler<'T>> with
@@ -269,17 +269,17 @@ module Json =
                                 m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
                                 |> List.fold
                                     (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
-                                |> JsonResult.map Map.ofList |> JsonResult.map (System.Collections.Generic.Dictionary)
+                                |> MappingResult.map Map.ofList |> MappingResult.map (System.Collections.Generic.Dictionary)
                             | _ -> jsonErr("Expected a JSON object", json)) }
-            | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map Array.ofList) }
-            | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> JsonResult.map ResizeArray) }
+            | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> MappingResult.map Array.ofList) }
+            | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> Json.Array) (fun _ json -> decodeList tP.Decode json |> MappingResult.map ResizeArray) }
             | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> Json.Array) (fun _ -> decodeList tP.Decode) }
             | Shape.FSharpOption s ->
                 s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with
                 member _.Visit<'t> () =
                     let tP = getPickler()
                     mkPickler (function Some v -> tP.Encode(v) | None -> Json.Null)
-                        (fun _ json -> match json with Json.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonResult.map(Some)) }
+                        (fun _ json -> match json with Json.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> MappingResult.map(Some)) }
             | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
                 let defaultRec() =
                     let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
@@ -355,16 +355,21 @@ module Json =
             | _ ->
                 failwithf "The type '%O' is unsupported; Declare a static property Pickler to implement your own behaviour" typeof<'T>
 
-    type JsonParseResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
-    module JsonParseResult =
+    type JsonResult<'T> = Success of 'T | MappingFailure of Exception | ParsingFailure of Exception
+    module JsonResult =
         open FParsec
         let make t (res: ParserResult<Json, _>) =
             match res with
             | ParserResult.Success (v, _, _) ->
-                match (t v): JsonResult<'T> with
-                | JsonResult.Success v -> JsonParseResult.Success v
-                | JsonResult.Failure e -> JsonParseResult.MappingFailure e
-            | ParserResult.Failure (e, _, _) -> JsonParseResult.ParsingFailure (Exception(e))
+                match (t v): MappingResult<'T> with
+                | MappingResult.Success v -> JsonResult.Success v
+                | MappingResult.Failure e -> JsonResult.MappingFailure e
+            | ParserResult.Failure (e, _, _) -> JsonResult.ParsingFailure (Exception(e))
+        let valueOrRaise =
+            function
+            | JsonResult.Success o -> o
+            | JsonResult.MappingFailure err
+            | JsonResult.ParsingFailure err -> raise err
 
     let toJson<'T>(obj: 'T) = Mapping.getPickler<'T>().Encode(obj)
     let toString<'T>(obj: 'T) = obj |> toJson<'T> |> Formatting.formatJson
@@ -377,6 +382,9 @@ module Json =
         else failwithf "Overwriting existing file %s is disallowed" file
 
     let fromJson<'T>(json: Json) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
-    let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonParseResult.make fromJson<'T>
-    let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonParseResult.make fromJson<'T>
-    let fromFile<'T>(filePath) = filePath |> Parsing.parseFile |> JsonParseResult.make fromJson<'T>
+    let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
+    let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
+    let fromFile<'T>(filePath) = filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T>
+
+type JsonResult<'T> = Json.JsonResult<'T>
+module JsonResult = Json.JsonResult
