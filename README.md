@@ -1,7 +1,5 @@
 # What's this?
 
-(Under construction)
-
 Yet another JSON library, specificially for my F# JSON needs which were not met by JSON.Net or Chiron
 
 ## How it works
@@ -38,10 +36,11 @@ type MyRecord = {
   static member Default = { A = "Hello"; B = 5 }
 ```
 And then any missing members are provided by the Default member.
-You can mark a field with `[<JsonRequired>]`, if so having it missing from the JSON data will result in an error.
+You can mark a field with `[<JsonRequired>]`, if so having it missing/failing to map from the JSON data will result in an error.
 
 ## Supported types:
 - Primitive types
+- DateTimeand DateTimeOffset (ISO 8601)
 - Lists and arrays (F# and System.Collections.Generic)
 - Maps and Dictionaries
 - Tuples
@@ -71,3 +70,4 @@ You can look through Library.fs for more examples on building both simple pickle
 ## Todo list:
 - Proper unit tests and benchmarks
 - Proper example code and some cleanup for readability
+- Special cases and options for things like DateTime format, byte arrays as base64, etc
