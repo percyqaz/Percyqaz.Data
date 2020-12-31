@@ -384,6 +384,6 @@ module Json =
     let fromJson<'T>(json: Json) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
     let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
     let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
-    let fromFile<'T>(filePath) = filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T>
+    let fromFile<'T>(filePath) = try filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T> with err -> JsonResult.ParsingFailure(err)
 
 type JsonResult<'T> = Json.JsonResult<'T>

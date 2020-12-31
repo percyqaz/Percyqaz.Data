@@ -53,5 +53,6 @@ module Program =
         printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
         //printfn "%A" (POCOExtension(3,5) |> Json.toString)
+        printfn "%A" (Json.fromFile<string>("doesntexist"))
         (Json.fromString<System.DateTime>("\"2020-12-02T00:13:37.016899+00:00\"")) |> Json.JsonResult.valueOrRaise |> printfn "%A"
         0
