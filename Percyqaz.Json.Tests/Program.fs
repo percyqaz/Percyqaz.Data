@@ -62,10 +62,10 @@ module Program =
         id x
 
     let [<EntryPoint>] main _ =
-        //printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
+        printfn "%A" (RecordTest.Default |> Json.toJson |> Json.Formatting.formatJson |> idPrint |> Json.fromString<RecordTest>)
         //printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<UnionTest>)
-        //printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<Json>)
-        printfn "%A" (POCOExtension(3,5) |> Json.toString)
+        printfn "%A" ("""{"Four": [{}, {}]}""" |> Json.fromString<Json>)
+        //printfn "%A" (POCOExtension(3,5) |> Json.toString)
         //printfn "%A" (Json.fromFile<string>("doesntexist"))
         //(Json.fromString<System.DateTime>("\"2020-12-02T00:13:37.016899+00:00\"")) |> Json.JsonResult.valueOrRaise |> printfn "%A"
         0
