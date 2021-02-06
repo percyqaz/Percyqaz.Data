@@ -26,17 +26,21 @@ let deserializedOutput = Json.fromFile<'T>(filepath)
 //serialization is just as simple
 let str = Json.toString(...)
 ```
-
-Records must implement a static member `Default`:
+### Records
+Records can implement a static member `Default` providing an instance of the record, in which case:
+- All members are **optional** unless marked with the `Json.Required` attribute
+- The default data is used where it is not provided by the JSON data.
 ```
 type MyRecord = {
   A: string
+  [<Json.Required>]
   B: int
 } with
   static member Default = { A = "Hello"; B = 5 }
 ```
-And then any missing members are provided by the Default member.
-You can mark a field with `[<JsonRequired>]`, if so having it missing/failing to map from the JSON data will result in an error.
+**If you don't implement a `Default` instance,** then all members are must be provided by the JSON data.
+
+Either way, Records never end up having null values / being non F#-friendly when parsed.
 
 ## Supported types:
 - Primitive types
@@ -53,6 +57,9 @@ You can mark a field with `[<JsonRequired>]`, if so having it missing/failing to
 POCO types are not supported by themselves.
 To add custom support, define a static member `Pickler` for your type that creates a JsonPickler of your type.
 
+Beware - You must take care to explicitly mark its type as `Json.Mapping.JsonPickler<TYPE HERE>` - using `Json.Mapping.mkPickler` to build your pickler is recommended.
+
+As it currently stands, **derived classes cannot use the inherited pickler of the base class and must implement another.**
 ```
 open Percyqaz.Json
 
@@ -65,9 +72,10 @@ type Example<'T>(defaultValue: 'T, value: 'T) =
             (fun (o: Example<'T>) -> tP.Encode(o.Value))
             (fun (o: Example<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.JsonResult.map (fun v -> POCOTest(o.DefaultValue, v)))
 ```
-You can look through Library.fs for more examples on building both simple picklers and for polymorphic types
+You can look through Library.fs for more examples on building both simple picklers and for polymorphic types. (More documentation may come)
 
 ## Todo list:
 - Proper unit tests and benchmarks
+- More examples and documentation
 - Proper example code and some cleanup for readability
 - Special cases and options for things like DateTime format, byte arrays as base64, etc
