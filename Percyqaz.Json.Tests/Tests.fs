@@ -53,6 +53,7 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
         match other with
         | :? POCO<'T> as other -> other.Value = this.Value && other.DefaultValue = this.DefaultValue
         | _ -> false
+    override this.GetHashCode() = 0 //shuts up compiler :)
     static member Pickler: Json.Mapping.JsonPickler<POCO<'T>> =
         let tP = Json.Mapping.getPickler<'T>()
         Json.Mapping.mkPickler
