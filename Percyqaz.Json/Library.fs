@@ -174,6 +174,7 @@ module Json =
 
             let private decodeList decoder json =
                 let o = Unchecked.defaultof<'t>
+                (*
                 let rec f (n, list) =
                     match list with
                     | [] -> Success []
@@ -183,9 +184,20 @@ module Json =
                             match f (n + 1, xs) with
                             | Success ys -> Success (y :: ys)
                             | Failure e -> Failure e
-                        | Failure e -> Failure <| Exception(sprintf "Error in item %i" n, e)
+                        | Failure e -> Failure <| Exception(sprintf "Error in item %i" n, e) *)
                 match json with
-                | JSON.Array xs -> f (0, xs)
+                | JSON.Array xs ->
+                    let l = ResizeArray<'t>()
+                    let mutable n = 1
+                    let mutable items = xs
+                    let mutable failure = None
+                    while Option.isNone failure && List.isEmpty items |> not do
+                        match decoder(o)(List.head items) with
+                        | Success v -> l.Add(v)
+                        | Failure err -> failure <- jsonErr((sprintf "Error in item %i: %O" n err), List.head items) |> Some
+                        n <- n + 1
+                        items <- List.tail items
+                    Option.defaultValue (Success l) failure
                 | _ -> jsonErr("Expected a JSON array", json)
 
             let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
@@ -288,9 +300,9 @@ module Json =
                                         (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
                                     |> JsonMapResult.map Map.ofList |> JsonMapResult.map (System.Collections.Generic.Dictionary)
                                 | _ -> jsonErr("Expected a JSON object", json)) }
-                | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map Array.ofList) }
-                | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map ResizeArray) }
-                | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> JSON.Array) (fun _ -> decodeList tP.Decode) }
+                | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map (fun (l: ResizeArray<'t>) -> l.ToArray())) }
+                | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json) }
+                | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map List.ofSeq) }
                 | Shape.FSharpOption s ->
                     s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with
                     member _.Visit<'t> () =
@@ -323,7 +335,7 @@ module Json =
                         (fun o json ->
                             let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                             match json with
-                            | JSON.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
+                            | JSON.Object map -> printf "."; decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
                             | _ -> jsonErr("Expected a JSON object", json))
                 | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
                     let elemHandler (field: IShapeMember<'Class>) =
