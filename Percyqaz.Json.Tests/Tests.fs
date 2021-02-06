@@ -60,7 +60,7 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
             (fun (o: POCO<'T>) -> tP.Encode(o.Value))
             (fun (o: POCO<'T>) json -> tP.Decode(o.DefaultValue)(json) |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
 
-type ComplexRecord = {
+type [<Json.AllRequired>] ComplexRecord = {
     union: Union<int>
     stunion: StructUnion
     enum: Enum

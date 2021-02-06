@@ -47,6 +47,7 @@ module Json =
     
     module Json =
         type RequiredAttribute() = inherit Attribute()
+        type AllRequiredAttribute() = inherit Attribute()
     
         module Parsing =
             open FParsec
@@ -297,10 +298,13 @@ module Json =
                         mkPickler (function Some v -> tP.Encode(v) | None -> JSON.Null)
                             (fun _ json -> match json with JSON.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonMapResult.map(Some)) }
                 | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
-                    let allRequired, defaultRec =
+                    let allRequired = shape.IsAnonymousRecord || typeof<'T>.GetCustomAttributes(typeof<AllRequiredAttribute>, true).Length > 0
+                    let defaultRec =
                         let mi = typeof<'T>.GetProperty("Default", typeof<'T>)
-                        if isNull mi then true, fun () -> shape.CreateUninitialized()
-                        else false, fun () -> mi.GetValue(null) :?> 'T
+                        if isNull mi then
+                            if not allRequired then failwithf "Record type %O must have either a Default implementation or be marked with the AllRequired attribute." typeof<'T>
+                            fun () -> shape.CreateUninitialized()
+                        else fun () -> mi.GetValue(null) :?> 'T
                     let memberHandler (field: IShapeMember<'Class>) =
                         let required = allRequired || field.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0
                         field.Accept { new IMemberVisitor<'Class, _> with
@@ -373,14 +377,16 @@ module Json =
 
         type JSON with static member Pickler: Mapping.JsonPickler<JSON> = Mapping.mkPickler(id)(fun _ -> id >> JsonMapResult.Success)
 
+        open System.IO
+
         let toJson<'T>(obj: 'T) = Mapping.getPickler<'T>().Encode(obj)
         let toString<'T>(obj: 'T) = obj |> toJson<'T> |> Formatting.formatJson
-        let toStream<'T>(stream: System.IO.Stream)(obj: 'T) =
-            use w = new System.IO.StreamWriter(stream)
+        let toStream<'T>(stream: Stream)(obj: 'T) =
+            use w = new StreamWriter(stream)
             w.Write(obj |> toJson<'T> |> Formatting.formatJson)
         let toFile<'T>(file, overwrite)(obj: 'T) =
-            if overwrite || (System.IO.File.Exists(file) |> not) then
-                System.IO.File.WriteAllText(file, obj |> toJson<'T> |> Formatting.formatJson)
+            if overwrite || (File.Exists(file) |> not) then
+                File.WriteAllText(file, obj |> toJson<'T> |> Formatting.formatJson)
             else failwithf "Overwriting existing file %s is disallowed" file
 
         let fromJson<'T>(json: JSON) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
