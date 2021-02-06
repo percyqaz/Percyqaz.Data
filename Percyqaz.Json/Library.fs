@@ -174,17 +174,6 @@ module Json =
 
             let private decodeList decoder json =
                 let o = Unchecked.defaultof<'t>
-                (*
-                let rec f (n, list) =
-                    match list with
-                    | [] -> Success []
-                    | (x :: xs) ->
-                        match decoder o x with
-                        | Success y ->
-                            match f (n + 1, xs) with
-                            | Success ys -> Success (y :: ys)
-                            | Failure e -> Failure e
-                        | Failure e -> Failure <| Exception(sprintf "Error in item %i" n, e) *)
                 match json with
                 | JSON.Array xs ->
                     let l = ResizeArray<'t>()
@@ -335,7 +324,7 @@ module Json =
                         (fun o json ->
                             let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                             match json with
-                            | JSON.Object map -> printf "."; decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
+                            | JSON.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
                             | _ -> jsonErr("Expected a JSON object", json))
                 | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
                     let elemHandler (field: IShapeMember<'Class>) =
@@ -387,8 +376,6 @@ module Json =
                             | _ -> jsonErr("Expected a JSON object or a JSON string", json))
                 | _ -> failwithf "The type '%O' is unsupported; Declare a static property Pickler to implement your own behaviour" typeof<'T>
 
-        type JSON with static member Pickler: Mapping.JsonPickler<JSON> = Mapping.mkPickler(id)(fun _ -> id >> JsonMapResult.Success)
-
         open System.IO
 
         let toJson<'T>(obj: 'T) = Mapping.getPickler<'T>().Encode(obj)
@@ -405,3 +392,5 @@ module Json =
         let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
         let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
         let fromFile<'T>(filePath) = try filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T> with err -> JsonResult.ParseFailure(err)
+
+    type JSON with static member Pickler: Json.Mapping.JsonPickler<JSON> = Json.Mapping.mkPickler(id)(fun _ -> id >> JsonMapResult.Success)

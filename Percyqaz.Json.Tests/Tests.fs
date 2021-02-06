@@ -85,7 +85,7 @@ type POCOExtension(a, b) =
 
 let ExpectFailure = function JsonMapResult.Success _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
 let ExpectSuccess = function JsonMapResult.Failure v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
-let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.toString |> Json.fromString<'T> |> JsonResult.value)
+let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.toString |> (fun j -> printfn "%s" j; j) |> Json.fromString<'T> |> JsonResult.value)
 
 let [<Test>] PrimitiveRoundTrip() = PrimitiveRecord.Default |> RoundTrip
 let [<Test>] StructRecordRoundTrip() = StructRecord.Default |> RoundTrip
@@ -98,6 +98,7 @@ let [<Test>] ComplexRecordRoundTrip() = { union = Union<_>.CaseOne ""; stunion =
 //these are tested separately to round trip code as they don't have structural equality
 let [<Test>] GenericListRoundTrip() = let list = ResizeArray([3;2;1]) in Assert.AreEqual(List.ofSeq list, list |> Json.toJson |> Json.fromJson<ResizeArray<int>> |> ExpectSuccess |> JsonMapResult.value |> List.ofSeq)
 let [<Test>] DefaultValueTest() = Assert.AreEqual(ComplexRecordToo.Default, Json.fromString<ComplexRecordToo>("{}") |> JsonResult.value)
+let [<Test>] JsonTest() =let j = PrimitiveRecord.Default |> Json.toJson in Assert.AreEqual(j, Json.toJson(j)); Assert.AreEqual(j, Json.fromJson<JSON>(j) |> JsonMapResult.value)
 
 let [<Test>] FileExist() = Json.fromFile<string>("doesntexist") |> ignore; Assert.Pass() //returns a failure instead of throwing an exception
 let [<Test>] Primitive1000() = for i = 0 to 1000 do PrimitiveRecord.Default |> Json.toJson |> Json.fromJson<PrimitiveRecord> |> ignore
