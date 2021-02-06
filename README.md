@@ -27,7 +27,7 @@ let deserializedOutput = Json.fromFile<'T>(filepath)
 let str = Json.toString(...)
 ```
 ### Records
-Records can implement a static member `Default` providing an instance of the record, in which case:
+Records should implement a static member `Default` providing an instance of the record, in which case:
 - All members are **optional** unless marked with the `Json.Required` attribute
 - The default data is used where it is not provided by the JSON data.
 ```
@@ -38,9 +38,11 @@ type MyRecord = {
 } with
   static member Default = { A = "Hello"; B = 5 }
 ```
-**If you don't implement a `Default` instance,** then all members are must be provided by the JSON data.
+If you don't have/want a `Default` instance, you can mark the record with `Json.AllRequired`, then all members must be provided by the JSON data.
 
-Either way, Records never end up having null values / being non F#-friendly when parsed.
+**Anonymous records are always treated as if they have the Json.AllRequired attribute** since you can't give them attributes in current F#.
+
+Either way, deserialisation is F# friendly / never gives records that have null values.
 
 ## Supported types:
 - Primitive types
@@ -72,6 +74,8 @@ type Example<'T>(defaultValue: 'T, value: 'T) =
             (fun (o: Example<'T>) -> tP.Encode(o.Value))
             (fun (o: Example<'T>) json -> tP.Decode(o.DefaultValue)(json) |> Json.JsonResult.map (fun v -> POCOTest(o.DefaultValue, v)))
 ```
+A custom `Pickler` member can also be used to override the default behaviour for Records and Unions.
+
 You can look through Library.fs for more examples on building both simple picklers and for polymorphic types. (More documentation may come)
 
 ## Todo list:
