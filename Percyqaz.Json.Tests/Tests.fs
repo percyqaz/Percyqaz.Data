@@ -1,6 +1,7 @@
 module Percyqaz.Json.Tests
 
 open System
+open System.Collections.Generic
 open Percyqaz.Json
 open NUnit.Framework
 
@@ -36,8 +37,9 @@ type PrimitiveRecord = {
     byte: byte
     time: DateTime
     time2: DateTimeOffset
+    time3: TimeSpan
 } with
-    static member Default = { int = 2; long = -2177777288888L; single = 0.5f; bool = true; float = -3.14159265358979; string = "Hello world"; byte = 127uy; time = DateTime.Now; time2 = DateTimeOffset.MaxValue }
+    static member Default = { int = 2; long = -2177777288888L; single = 0.5f; bool = true; float = -3.14159265358979; string = "Hello world"; byte = 127uy; time = DateTime.Now; time2 = DateTimeOffset.MaxValue; time3 = DateTime.Now.TimeOfDay }
 
 type [<Struct>] StructRecord = {
     one: int list
@@ -95,8 +97,10 @@ let [<Test>] StUnionRoundTrip() = [CaseOne ("", 0); CaseTwo] |> List.map RoundTr
 let [<Test>] Float32RoundTrip() = [Single.Epsilon; Single.NegativeInfinity; Single.MaxValue; Single.NaN; -2782346.348726f] |> List.map RoundTrip |> ignore; Assert.Pass()
 let [<Test>] EnumRoundTrip() = [Enum.A; Enum.C; Enum.B ||| Enum.A; Enum.A &&& Enum.C] |> List.map RoundTrip |> ignore; Assert.Pass()
 let [<Test>] ComplexRecordRoundTrip() = { union = Union<_>.CaseOne ""; stunion = CaseTwo; enum = Enum.A; stuple = struct (1,2,Int32.MinValue); tuple = ("", 0); prim = PrimitiveRecord.Default; too = ComplexRecordToo.Default } |> RoundTrip
+let [<Test>] MapRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> RoundTrip
 //these are tested separately to round trip code as they don't have structural equality
 let [<Test>] GenericListRoundTrip() = let list = ResizeArray([3;2;1]) in Assert.AreEqual(List.ofSeq list, list |> Json.toJson |> Json.fromJson<ResizeArray<int>> |> ExpectSuccess |> JsonMapResult.value |> List.ofSeq)
+let [<Test>] GenericDictRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> Dictionary |> RoundTrip
 let [<Test>] DefaultValueTest() = Assert.AreEqual(ComplexRecordToo.Default, Json.fromString<ComplexRecordToo>("{}") |> JsonResult.value)
 let [<Test>] JsonTest() =let j = PrimitiveRecord.Default |> Json.toJson in Assert.AreEqual(j, Json.toJson(j)); Assert.AreEqual(j, Json.fromJson<JSON>(j) |> JsonMapResult.value)
 

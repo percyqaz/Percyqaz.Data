@@ -225,7 +225,7 @@ module Json =
                 | Shape.Decimal -> mkNumericPickler (fun (f: decimal) -> f.ToString(CultureInfo.InvariantCulture)) (Decimal.Parse)
                 | Shape.Char -> mkPickler (string >> JSON.String) (fun _ json -> match json with JSON.String s when s.Length > 0 -> Success s.[0] | json -> jsonErr("Expected a nonempty JSON string", json))
                 | Shape.String -> mkPickler (JSON.String) (fun _ json -> match json with JSON.String s -> Success s | json -> jsonErr("Expected a JSON string", json))
-                | Shape.TimeSpan -> failwith "nyi"
+                | Shape.TimeSpan -> let p = getPickler<int64>() in mkPickler (fun (ts: TimeSpan) -> p.Encode(ts.Ticks)) (fun _ -> p.Decode 0L >> JsonMapResult.map(fun i -> TimeSpan.FromTicks(i)))
                 | Shape.DateTime ->
                     mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
                         (fun _ json -> 
@@ -264,31 +264,47 @@ module Json =
                 | Shape.FSharpMap s ->
                     s.Accept { new IFSharpMapVisitor<JsonPickler<'T>> with
                     member _.Visit<'K, 'V when 'K : comparison>() =
-                        if typeof<'K> <> typeof<string> then failwith "Map must have keys of type string"
-                        let tP = getPickler()
-                        mkPickler ((Map.map (fun _ -> tP.Encode)) >> JSON.Object)
-                            (fun _ json ->
-                                match json with
-                                | JSON.Object m ->
-                                    m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
-                                    |> List.fold
-                                        (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
-                                    |> JsonMapResult.map Map.ofList
-                                | _ -> jsonErr("Expected a JSON object", json)) }
+                        if typeof<'K> = typeof<string> then
+                            let tP = getPickler()
+                            mkPickler ((Map.map (fun _ -> tP.Encode)) >> JSON.Object)
+                                (fun _ json ->
+                                    match json with
+                                    | JSON.Object m ->
+                                        m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
+                                        |> List.fold
+                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
+                                        |> JsonMapResult.map Map.ofList
+                                    | _ -> jsonErr("Expected a JSON object", json))
+                        else
+                            let tP = getPickler<('K * 'V) list>()
+                            mkPickler (fun (d: Map<'K, 'V>) -> d |> Map.toList |> tP.Encode) (fun _ -> tP.Decode Unchecked.defaultof<_> >> JsonMapResult.map Map.ofList) }
                 | Shape.Dictionary s ->
                     s.Accept { new IDictionaryVisitor<JsonPickler<'T>> with
                     member _.Visit<'K, 'V when 'K : equality>() =
-                        if typeof<'K> <> typeof<string> then failwith "Dictionary must have keys of type string"
-                        let tP = getPickler()
-                        mkPickler (fun (d: System.Collections.Generic.Dictionary<string, 'V>) -> d |> Seq.map (fun kv -> (kv.Key, tP.Encode kv.Value)) |> Map.ofSeq |> JSON.Object)
-                            (fun _ json ->
-                                match json with
-                                | JSON.Object m ->
-                                    m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
-                                    |> List.fold
-                                        (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
-                                    |> JsonMapResult.map Map.ofList |> JsonMapResult.map (System.Collections.Generic.Dictionary)
-                                | _ -> jsonErr("Expected a JSON object", json)) }
+                        if typeof<'K> = typeof<string> then
+                            let tP = getPickler()
+                            mkPickler (fun (d: Collections.Generic.Dictionary<string, 'V>) -> d |> Seq.map (fun kv -> (kv.Key, tP.Encode kv.Value)) |> Map.ofSeq |> JSON.Object)
+                                (fun _ json ->
+                                    match json with
+                                    | JSON.Object m ->
+                                        m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
+                                        |> List.fold
+                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
+                                        |> JsonMapResult.map Map.ofList |> JsonMapResult.map (Collections.Generic.Dictionary)
+                                    | _ -> jsonErr("Expected a JSON object", json))
+                        else
+                            let tP = getPickler<Collections.Generic.List<('K * 'V)>>()
+                            mkPickler (fun (d: Collections.Generic.Dictionary<'K, 'V>) -> d |> Seq.map (fun kv -> (kv.Key, kv.Value)) |> Collections.Generic.List |> tP.Encode)
+                                (fun _ json ->
+                                    tP.Decode Unchecked.defaultof<_> json
+                                    |> fun r ->
+                                        try
+                                            r |> JsonMapResult.map (fun s ->
+                                                let d = Collections.Generic.Dictionary<'K, 'V>()
+                                                Seq.iter (fun (k, v) -> d.Add(k, v)) s
+                                                d)
+                                        with :? ArgumentException as e -> JsonMapResult.Failure e)
+                                    }
                 | Shape.Array s when s.Rank = 1 -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofArray >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map (fun (l: ResizeArray<'t>) -> l.ToArray())) }
                 | Shape.ResizeArray s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.ofSeq >> List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json) }
                 | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map List.ofSeq) }
