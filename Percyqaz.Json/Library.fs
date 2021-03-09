@@ -194,8 +194,10 @@ module Json =
 
             let rec getPickler<'T>() : JsonPickler<'T> =
                 let delay (c : Cell<JsonPickler<'T>>) : JsonPickler<'T> = { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json) }
-                match cache.InitOrGetCachedValue<JsonPickler<'T>> delay with
-                | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p
+                lock(cache)
+                    (fun () ->
+                        match cache.InitOrGetCachedValue<JsonPickler<'T>> delay with
+                        | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p)
 
             and private genPickler<'T>() : JsonPickler<'T> =
                 let mi = typeof<'T>.GetProperty("Pickler")
