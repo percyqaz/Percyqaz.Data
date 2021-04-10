@@ -44,16 +44,16 @@ module Json =
             function
             | JsonResult.Success o -> o
             | JsonResult.MapFailure err | JsonResult.ParseFailure err -> raise err
-    
+
     module Json =
         type RequiredAttribute() = inherit Attribute()
         type AllRequiredAttribute() = inherit Attribute()
-    
+
         module Parsing =
             open FParsec
 
             //adapted directly from https://www.quanttec.com/fparsec/tutorial.html#parsing-json
-            let jsonParser = 
+            let jsonParser =
                 let jvalue, jvalueRef = createParserForwardedToRef<JSON, unit>()
 
                 let jnull  = stringReturn "null" JSON.Null
@@ -63,7 +63,7 @@ module Json =
 
                 let str s = pstring s
                 let stringLiteral =
-                    let escape = 
+                    let escape =
                         anyOf "\"\\/bfnrt" |>> function | 'b' -> "\b" | 'f' -> "\u000C" | 'n' -> "\n" | 'r' -> "\r" | 't' -> "\t" | c -> string c
                     let unicodeEscape =
                         let hex2int c = (int c &&& 15) + (int c >>> 6)*9
@@ -91,8 +91,8 @@ module Json =
 
         module Formatting =
             open System.Text
-        
-            let stringBuildJson json = 
+
+            let stringBuildJson json =
                 let escapeChars =
                     [| '"'; '\\'; '\n'; '\r'; '\t'; '\b'; '\f'
                        '\u0000'; '\u0001'; '\u0002'; '\u0003'
@@ -137,7 +137,7 @@ module Json =
                     function
                     | JSON.Null -> sb.Append "null"
                     | JSON.True -> sb.Append "true"
-                    | JSON.False -> sb.Append "false" 
+                    | JSON.False -> sb.Append "false"
                     | JSON.Number s -> sb.Append s
                     | JSON.String s -> sb |> append "\"" |> writeString s |> append "\""
                     | JSON.Array xs ->
@@ -206,7 +206,7 @@ module Json =
                 | Shape.Unit -> mkPickler (fun _ -> JSON.Null) (fun _ _ -> Success ())
                 | Shape.Bool ->
                     mkPickler (fun b -> if b then JSON.True else JSON.False)
-                        (fun _ json -> 
+                        (fun _ json ->
                             match json with
                             | JSON.String "" | JSON.Number "0" | JSON.Null | JSON.False -> Success false
                             | JSON.String _ | JSON.Number "1" | JSON.True -> Success true
@@ -230,18 +230,18 @@ module Json =
                 | Shape.TimeSpan -> let p = getPickler<int64>() in mkPickler (fun (ts: TimeSpan) -> p.Encode(ts.Ticks)) (fun _ -> p.Decode 0L >> JsonMapResult.map(fun i -> TimeSpan.FromTicks(i)))
                 | Shape.DateTime ->
                     mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
-                        (fun _ json -> 
+                        (fun _ json ->
                             match json with
                             | JSON.String s -> (try DateTime.ParseExact (s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal) |> Success with err -> Failure err)
                             | json -> jsonErr("Expected a formatted DateTime string", json))
-                | Shape.DateTimeOffset -> 
+                | Shape.DateTimeOffset ->
                     mkPickler (fun (dt: DateTimeOffset) -> dt.ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
                         (fun _ json ->
                             match json with
                             | JSON.String s -> (try DateTimeOffset.ParseExact (s, [| "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'"; "o"; "r" |], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) |> Success with err -> Failure err)
                             | _ -> jsonErr("Expected a formatted DateTime string", json))
                 | Shape.Enum s ->
-                    s.Accept { new IEnumVisitor<JsonPickler<'T>> with 
+                    s.Accept { new IEnumVisitor<JsonPickler<'T>> with
                     member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
                         let tP = getPickler<'u>()
                         mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode(Unchecked.defaultof<'u>)json |> JsonMapResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
@@ -258,9 +258,9 @@ module Json =
                     let encoders, decoders = shape.Elements |> Array.map elemHandler |> Array.unzip
                     mkPickler
                         (fun o -> Array.map (fun enc -> enc(o)) encoders |> List.ofArray |> JSON.Array)
-                        (fun _ json -> 
-                            match json with 
-                            | JSON.Array xs when List.length xs = shape.Elements.Length -> 
+                        (fun _ json ->
+                            match json with
+                            | JSON.Array xs when List.length xs = shape.Elements.Length ->
                                 Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
                             | _ -> jsonErr("Expected a JSON array of length " + shape.Elements.Length.ToString(), json))
                 | Shape.FSharpMap s ->
@@ -363,7 +363,7 @@ module Json =
                             | _ -> fun case -> Array.map (fun e -> e(case)) encoders |> List.ofArray |> JSON.Array),
                             (match case.Fields.Length with
                             | 0 -> fun _ _ -> Success <| case.CreateUninitialized()
-                            | 1 -> fun _ json -> decoders.[0](case.CreateUninitialized())json
+                            | 1 -> fun _ json -> decoders.[0](case.CreateUninitialized()) json
                             | n -> fun _ json ->
                                 match json with
                                 | JSON.Array xs ->
