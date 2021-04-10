@@ -66,9 +66,9 @@ module Json =
                     let escape =
                         anyOf "\"\\/bfnrt" |>> function | 'b' -> "\b" | 'f' -> "\u000C" | 'n' -> "\n" | 'r' -> "\r" | 't' -> "\t" | c -> string c
                     let unicodeEscape =
-                        let hex2int c = (int c &&& 15) + (int c >>> 6)*9
+                        let hex2int c = (int c &&& 15) + (int c >>> 6) * 9
                         str "u" >>. pipe4 hex hex hex hex (fun h3 h2 h1 h0 ->
-                            (hex2int h3)*4096 + (hex2int h2)*256 + (hex2int h1)*16 + hex2int h0
+                            (hex2int h3) * 4096 + (hex2int h2) * 256 + (hex2int h1) * 16 + hex2int h0
                             |> char |> string)
                     let escapedCharSnippet = str "\\" >>. (escape <|> unicodeEscape)
                     let normalCharSnippet  = manySatisfy (fun c -> c <> '"' && c <> '\\')
@@ -85,8 +85,8 @@ module Json =
                 do jvalueRef := choice [jobject; jlist; jstring; jtrue; jfalse; jnull; jnumber]
                 jvalue .>> eof
 
-            let parseStream name stream = runParserOnStream jsonParser () name stream (Text.Encoding.UTF8)
-            let parseFile path = runParserOnFile jsonParser () path (Text.Encoding.UTF8)
+            let parseStream name stream = runParserOnStream jsonParser () name stream Text.Encoding.UTF8
+            let parseFile path = runParserOnFile jsonParser () path Text.Encoding.UTF8
             let parseString str = run jsonParser str
 
         module Formatting =
@@ -142,16 +142,16 @@ module Json =
                     | JSON.String s -> sb |> append "\"" |> writeString s |> append "\""
                     | JSON.Array xs ->
                         let rec f xs sb =
-                            match xs with [] -> sb | x::[] -> stringifyJson(sb)(x) | x::xs -> stringifyJson(sb)(x) |> append ", " |> f xs
+                            match xs with [] -> sb | x::[] -> stringifyJson sb x | x::xs -> stringifyJson sb x |> append ", " |> f xs
                         sb |> append "[" |> f xs |> append "]"
                     | JSON.Object m ->
                         let rec f xs sb =
                             match xs with
                             | [] -> sb
-                            | (k, x)::[] ->
-                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson(sb)(x)
-                            | (k, x)::xs ->
-                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson(sb)(x) |> append ", " |> f xs
+                            | (k, x) :: [] ->
+                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson sb x
+                            | (k, x) :: xs ->
+                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson sb x |> append ", " |> f xs
                         sb |> append "{" |> f (Map.toList m) |> append "}"
                 stringifyJson (StringBuilder()) json
 
@@ -182,8 +182,8 @@ module Json =
                     let mutable failure = None
                     while Option.isNone failure && List.isEmpty items |> not do
                         match decoder(o)(List.head items) with
-                        | Success v -> l.Add(v)
-                        | Failure err -> failure <- jsonErr((sprintf "Error in item %i: %O" n err), List.head items) |> Some
+                        | Success v -> l.Add v
+                        | Failure err -> failure <- jsonErr(sprintf "Error in item %i: %O" n err, List.head items) |> Some
                         n <- n + 1
                         items <- List.tail items
                     Option.defaultValue (Success l) failure
@@ -211,23 +211,23 @@ module Json =
                             | JSON.String "" | JSON.Number "0" | JSON.Null | JSON.False -> Success false
                             | JSON.String _ | JSON.Number "1" | JSON.True -> Success true
                             | _ -> jsonErr("Expected a boolean value", json))
-                | Shape.Byte -> mkNumericPickler (fun (i: byte) -> i.ToString(CultureInfo.InvariantCulture)) (Byte.Parse)
-                | Shape.SByte -> mkNumericPickler (fun (i: sbyte) -> i.ToString(CultureInfo.InvariantCulture)) (SByte.Parse)
-                | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString(CultureInfo.InvariantCulture)) (Int16.Parse)
-                | Shape.UInt16 -> mkNumericPickler (fun (i: uint16) -> i.ToString(CultureInfo.InvariantCulture)) (UInt16.Parse)
-                | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString(CultureInfo.InvariantCulture)) (Int32.Parse)
-                | Shape.UInt32 -> mkNumericPickler (fun (i: uint32) -> i.ToString(CultureInfo.InvariantCulture)) (UInt32.Parse)
-                | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString(CultureInfo.InvariantCulture)) (Int64.Parse)
-                | Shape.UInt64 -> mkNumericPickler (fun (i: uint64) -> i.ToString(CultureInfo.InvariantCulture)) (UInt64.Parse)
+                | Shape.Byte -> mkNumericPickler (fun (i: byte) -> i.ToString CultureInfo.InvariantCulture) Byte.Parse
+                | Shape.SByte -> mkNumericPickler (fun (i: sbyte) -> i.ToString CultureInfo.InvariantCulture) SByte.Parse
+                | Shape.Int16 -> mkNumericPickler (fun (i: int16) -> i.ToString CultureInfo.InvariantCulture) Int16.Parse
+                | Shape.UInt16 -> mkNumericPickler (fun (i: uint16) -> i.ToString CultureInfo.InvariantCulture) UInt16.Parse
+                | Shape.Int32 -> mkNumericPickler (fun (i: int32) -> i.ToString CultureInfo.InvariantCulture) Int32.Parse
+                | Shape.UInt32 -> mkNumericPickler (fun (i: uint32) -> i.ToString CultureInfo.InvariantCulture) UInt32.Parse
+                | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) Int64.Parse
+                | Shape.UInt64 -> mkNumericPickler (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) UInt64.Parse
                 | Shape.IntPtr -> failwith "nyi"
                 | Shape.UIntPtr -> failwith "nyi"
-                | Shape.BigInt -> mkNumericPickler (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) (Numerics.BigInteger.Parse)
-                | Shape.Single -> mkNumericPickler (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) (Single.Parse)
-                | Shape.Double -> mkNumericPickler (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) (Double.Parse)
-                | Shape.Decimal -> mkNumericPickler (fun (f: decimal) -> f.ToString(CultureInfo.InvariantCulture)) (Decimal.Parse)
+                | Shape.BigInt -> mkNumericPickler (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) Numerics.BigInteger.Parse
+                | Shape.Single -> mkNumericPickler (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) Single.Parse
+                | Shape.Double -> mkNumericPickler (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) Double.Parse
+                | Shape.Decimal -> mkNumericPickler (fun (f: decimal) -> f.ToString CultureInfo.InvariantCulture) Decimal.Parse
                 | Shape.Char -> mkPickler (string >> JSON.String) (fun _ json -> match json with JSON.String s when s.Length > 0 -> Success s.[0] | json -> jsonErr("Expected a nonempty JSON string", json))
-                | Shape.String -> mkPickler (JSON.String) (fun _ json -> match json with JSON.String s -> Success s | json -> jsonErr("Expected a JSON string", json))
-                | Shape.TimeSpan -> let p = getPickler<int64>() in mkPickler (fun (ts: TimeSpan) -> p.Encode(ts.Ticks)) (fun _ -> p.Decode 0L >> JsonMapResult.map(fun i -> TimeSpan.FromTicks(i)))
+                | Shape.String -> mkPickler JSON.String (fun _ json -> match json with JSON.String s -> Success s | json -> jsonErr("Expected a JSON string", json))
+                | Shape.TimeSpan -> let p = getPickler<int64>() in mkPickler (fun (ts: TimeSpan) -> p.Encode ts.Ticks) (fun _ -> p.Decode 0L >> JsonMapResult.map TimeSpan.FromTicks)
                 | Shape.DateTime ->
                     mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
                         (fun _ json ->
@@ -244,7 +244,7 @@ module Json =
                     s.Accept { new IEnumVisitor<JsonPickler<'T>> with
                     member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
                         let tP = getPickler<'u>()
-                        mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode(Unchecked.defaultof<'u>)json |> JsonMapResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
+                        mkPickler (LanguagePrimitives.EnumToValue >> tP.Encode) (fun _ json -> tP.Decode Unchecked.defaultof<'u> json |> JsonMapResult.map LanguagePrimitives.EnumOfValue<'u,'t>)}
                 | Shape.Tuple (:? ShapeTuple<'T> as shape) ->
                     let elemHandler (field: IShapeMember<'Class>) =
                         field.Accept { new IMemberVisitor<'Class, _> with
@@ -252,16 +252,16 @@ module Json =
                             let tP = getPickler()
                             (fun o -> tP.Encode(shape.Get o)),
                             (fun o json ->
-                                match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'a>)(json) with
+                                match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'a>) json with
                                 | Success v -> Success (shape.Set o v)
                                 | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
                     let encoders, decoders = shape.Elements |> Array.map elemHandler |> Array.unzip
                     mkPickler
-                        (fun o -> Array.map (fun enc -> enc(o)) encoders |> List.ofArray |> JSON.Array)
+                        (fun o -> Array.map (fun enc -> enc o) encoders |> List.ofArray |> JSON.Array)
                         (fun _ json ->
                             match json with
                             | JSON.Array xs when List.length xs = shape.Elements.Length ->
-                                Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec(o)(json) | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
+                                Array.ofList xs |> Array.zip decoders |> Array.fold(fun o (dec, json) -> match o with Success o -> dec o json | Failure e -> Failure e) (Success <| shape.CreateUninitialized())
                             | _ -> jsonErr("Expected a JSON array of length " + shape.Elements.Length.ToString(), json))
                 | Shape.FSharpMap s ->
                     s.Accept { new IFSharpMapVisitor<JsonPickler<'T>> with
@@ -274,7 +274,7 @@ module Json =
                                     | JSON.Object m ->
                                         m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
                                         |> List.fold
-                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
+                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e)) (Success [])
                                         |> JsonMapResult.map Map.ofList
                                     | _ -> jsonErr("Expected a JSON object", json))
                         else
@@ -291,11 +291,11 @@ module Json =
                                     | JSON.Object m ->
                                         m |> Map.map (fun k -> tP.Decode Unchecked.defaultof<'V>) |> Map.toList
                                         |> List.fold
-                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e))(Success [])
-                                        |> JsonMapResult.map Map.ofList |> JsonMapResult.map (Collections.Generic.Dictionary)
+                                            (fun s kv -> match (s, kv) with (Failure e, _) -> Failure e | (Success xs, (k, Success v)) -> Success ((k, v) :: xs) | (_, (k, Failure e)) -> Failure <| Exception(sprintf "Failed to parse key '%s'" k, e)) (Success [])
+                                        |> JsonMapResult.map Map.ofList |> JsonMapResult.map Collections.Generic.Dictionary
                                     | _ -> jsonErr("Expected a JSON object", json))
                         else
-                            let tP = getPickler<Collections.Generic.List<('K * 'V)>>()
+                            let tP = getPickler<Collections.Generic.List<'K * 'V>>()
                             mkPickler (fun (d: Collections.Generic.Dictionary<'K, 'V>) -> d |> Seq.map (fun kv -> (kv.Key, kv.Value)) |> Collections.Generic.List |> tP.Encode)
                                 (fun _ json ->
                                     tP.Decode Unchecked.defaultof<_> json
@@ -303,7 +303,7 @@ module Json =
                                         try
                                             r |> JsonMapResult.map (fun s ->
                                                 let d = Collections.Generic.Dictionary<'K, 'V>()
-                                                Seq.iter (fun (k, v) -> d.Add(k, v)) s
+                                                Seq.iter d.Add s
                                                 d)
                                         with :? ArgumentException as e -> JsonMapResult.Failure e)
                                     }
@@ -312,10 +312,10 @@ module Json =
                 | Shape.FSharpList s -> s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with member _.Visit<'t>() = let tP = getPickler<'t>() in mkPickler (List.map tP.Encode >> JSON.Array) (fun _ json -> decodeList tP.Decode json |> JsonMapResult.map List.ofSeq) }
                 | Shape.FSharpOption s ->
                     s.Element.Accept { new ITypeVisitor<JsonPickler<'T>> with
-                    member _.Visit<'t> () =
+                    member _.Visit<'t>() =
                         let tP = getPickler()
-                        mkPickler (function Some v -> tP.Encode(v) | None -> JSON.Null)
-                            (fun _ json -> match json with JSON.Null -> Success None | json -> tP.Decode(Unchecked.defaultof<'t>)(json) |> JsonMapResult.map(Some)) }
+                        mkPickler (function Some v -> tP.Encode v | None -> JSON.Null)
+                            (fun _ json -> match json with JSON.Null -> Success None | json -> tP.Decode Unchecked.defaultof<'t> json |> JsonMapResult.map Some) }
                 | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) ->
                     let allRequired = shape.IsAnonymousRecord || typeof<'T>.GetCustomAttributes(typeof<AllRequiredAttribute>, true).Length > 0
                     let defaultRec =
@@ -331,18 +331,18 @@ module Json =
                             let tP = getPickler()
                             ((fun o map -> Map.add field.Label (tP.Encode(shape.Get o)) map),
                                 (fun o map ->
-                                    if Map.containsKey(field.Label)(map) then
-                                        match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<_>)(map.[field.Label]) with
+                                    if Map.containsKey field.Label map then
+                                        match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<_>) map.[field.Label] with
                                         | Success v -> Success (shape.Set o v)
                                         | Failure e -> if required then Failure <| Exception("Required field \"" + field.Label + "\" was not parsed successfully", e) else Success o
                                     else if required then Failure <| Exception("Required field \"" + field.Label + "\" was not provided") else Success o) )}
                     let inserters, decoders = shape.Fields |> Array.map memberHandler |> Array.unzip
                     mkPickler
-                        (fun o -> Array.fold (fun map inserter -> inserter(o)(map)) Map.empty inserters |> JSON.Object)
+                        (fun o -> Array.fold (fun map inserter -> inserter o map) Map.empty inserters |> JSON.Object)
                         (fun o json ->
                             let o = if obj.ReferenceEquals(o, null) then defaultRec() else o
                             match json with
-                            | JSON.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder(v)(map) | Failure e -> Failure e) (Success o)
+                            | JSON.Object map -> decoders |> Array.fold (fun o decoder -> match o with | Success v -> decoder v map | Failure e -> Failure e) (Success o)
                             | _ -> jsonErr("Expected a JSON object", json))
                 | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
                     let elemHandler (field: IShapeMember<'Class>) =
@@ -351,7 +351,7 @@ module Json =
                             let tP = getPickler()
                             (fun o -> tP.Encode(shape.Get o)),
                             (fun o json ->
-                                match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'b>)(json) with
+                                match tP.Decode(try shape.Get o with err -> Unchecked.defaultof<'b>) json with
                                 | Success v -> Success (shape.Set o v)
                                 | Failure e -> Failure <| Exception("Failed to parse " + field.Label, e)) }
                     let caseHandler (case: ShapeFSharpUnionCase<'Class>) =
@@ -359,11 +359,11 @@ module Json =
                         (
                             (match case.Fields.Length with
                             | 0 -> fun _ -> JSON.Null
-                            | 1 -> fun case -> encoders.[0](case)
-                            | _ -> fun case -> Array.map (fun e -> e(case)) encoders |> List.ofArray |> JSON.Array),
+                            | 1 -> fun case -> encoders.[0] case
+                            | _ -> fun case -> Array.map (fun e -> e case) encoders |> List.ofArray |> JSON.Array),
                             (match case.Fields.Length with
                             | 0 -> fun _ _ -> Success <| case.CreateUninitialized()
-                            | 1 -> fun _ json -> decoders.[0](case.CreateUninitialized()) json
+                            | 1 -> fun _ json -> decoders.[0] (case.CreateUninitialized()) json
                             | n -> fun _ json ->
                                 match json with
                                 | JSON.Array xs ->
@@ -379,7 +379,7 @@ module Json =
                             let t = shape.GetTag (o: 'T)
                             let c = shape.UnionCases.[t].CaseInfo.Name
                             let (e, _, a) = cases.[t]
-                            if a = 0 then JSON.String c else [(c , e o)] |> Map.ofList |> JSON.Object)
+                            if a = 0 then JSON.String c else [(c, e o)] |> Map.ofList |> JSON.Object)
                         (fun o json ->
                             match json with
                             | JSON.String s ->
@@ -396,19 +396,19 @@ module Json =
 
         open System.IO
 
-        let toJson<'T>(obj: 'T) = Mapping.getPickler<'T>().Encode(obj)
-        let toString<'T>(obj: 'T) = obj |> toJson<'T> |> Formatting.formatJson
-        let toStream<'T>(stream: Stream)(obj: 'T) =
+        let toJson<'T> (obj: 'T) = Mapping.getPickler<'T>().Encode obj
+        let toString<'T> (obj: 'T) = obj |> toJson<'T> |> Formatting.formatJson
+        let toStream<'T> (stream: Stream) (obj: 'T) =
             use w = new StreamWriter(stream)
-            w.Write(obj |> toJson<'T> |> Formatting.formatJson)
-        let toFile<'T>(file, overwrite)(obj: 'T) =
-            if overwrite || (File.Exists(file) |> not) then
+            obj |> toJson<'T> |> Formatting.formatJson |> w.Write
+        let toFile<'T> (file, overwrite) (obj: 'T) =
+            if overwrite || (File.Exists file |> not) then
                 File.WriteAllText(file, obj |> toJson<'T> |> Formatting.formatJson)
             else failwithf "Overwriting existing file %s is disallowed" file
 
-        let fromJson<'T>(json: JSON) = Mapping.getPickler<'T>().Decode(Unchecked.defaultof<'T>)(json)
-        let fromString<'T>(str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
-        let fromStream<'T>(nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
-        let fromFile<'T>(filePath) = try filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T> with err -> JsonResult.ParseFailure(err)
+        let fromJson<'T> (json: JSON) = Mapping.getPickler<'T>().Decode Unchecked.defaultof<'T> json
+        let fromString<'T> (str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
+        let fromStream<'T> (nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
+        let fromFile<'T> (filePath: string) = try filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T> with err -> JsonResult.ParseFailure err
 
-    type JSON with static member Pickler: Json.Mapping.JsonPickler<JSON> = Json.Mapping.mkPickler(id)(fun _ -> id >> JsonMapResult.Success)
+    type JSON with static member Pickler: Json.Mapping.JsonPickler<JSON> = Json.Mapping.mkPickler id (fun _ -> JsonMapResult.Success)
