@@ -46,7 +46,7 @@ Either way, deserialisation is F# friendly / never gives records that have null 
 
 ## Supported types:
 - Primitive types
-- DateTimeand DateTimeOffset (ISO 8601)
+- DateTime and DateTimeOffset (ISO 8601)
 - Lists and arrays (F# and System.Collections.Generic)
 - Maps and Dictionaries
 - Tuples
