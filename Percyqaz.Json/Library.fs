@@ -35,7 +35,7 @@ module Json =
                 match (t v): JsonMapResult<'T> with
                 | JsonMapResult.Success v -> JsonResult.Success v
                 | JsonMapResult.Failure e -> JsonResult.MapFailure e
-            | ParserResult.Failure (e, _, _) -> JsonResult.ParseFailure (Exception(e))
+            | ParserResult.Failure (e, _, _) -> JsonResult.ParseFailure (Exception e)
         let map f =
             function
             | JsonResult.Success o -> f o
@@ -166,11 +166,30 @@ module Json =
                 Encode: 'T -> JSON
                 Decode: 'T -> JSON -> JsonMapResult<'T>
             }
+            
+            type ParserCrateEval =
+                abstract member Create<'T> : unit -> JsonPickler<'T> option
 
+            let mutable private customRules: ParserCrateEval list = []
             let private cache = new TypeGenerationContext()
 
             let mkPickler (encode: 'T -> JSON) (decode: 'T -> JSON -> JsonMapResult<'T>) = { Encode = unbox encode; Decode = unbox decode }
-            let jsonErr(desc, json) = Exception(sprintf "%s\nReceived JSON: %A" desc json) |> Failure
+            let jsonErr (desc, json) = Exception(sprintf "%s\nReceived JSON: %A" desc json) |> Failure
+
+            module Rules =
+                type ParserCrate =
+                    abstract member Encode<'T> : 'T -> JSON
+                    abstract member Decode<'T> : 'T -> JSON -> JsonMapResult<'T>
+
+                let addTypeRule<'T> (encode: 'T -> JSON) (decode: 'T -> JSON -> JsonMapResult<'T>) =
+                    let rule =
+                        { new ParserCrateEval with
+                            override this.Create() = Some (mkPickler encode decode) }
+                    customRules <- rule :: customRules
+
+                //let addGenericRule (check: Type -> bool) (crate: ParserCrate) =
+                //    let rule = fun t -> if check t then Some (t |> encoder |> unbox, t |> decode |> unbox) else None
+                //    customRules <- rule :: customRules
 
             let private decodeList decoder json =
                 let o = Unchecked.defaultof<'t>
@@ -181,7 +200,7 @@ module Json =
                     let mutable items = xs
                     let mutable failure = None
                     while Option.isNone failure && List.isEmpty items |> not do
-                        match decoder(o)(List.head items) with
+                        match decoder o (List.head items) with
                         | Success v -> l.Add v
                         | Failure err -> failure <- jsonErr(sprintf "Error in item %i: %O" n err, List.head items) |> Some
                         n <- n + 1
@@ -193,7 +212,7 @@ module Json =
                 mkPickler (encode >> JSON.Number) (fun _ json -> match json with JSON.String s | JSON.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | json -> jsonErr("Expected a number", json))
 
             let rec getPickler<'T>() : JsonPickler<'T> =
-                let delay (c : Cell<JsonPickler<'T>>) : JsonPickler<'T> = { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json) }
+                let delay (c: Cell<JsonPickler<'T>>) : JsonPickler<'T> = { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json) }
                 lock(cache)
                     (fun () ->
                         match cache.InitOrGetCachedValue<JsonPickler<'T>> delay with
@@ -202,6 +221,8 @@ module Json =
             and private genPickler<'T>() : JsonPickler<'T> =
                 let mi = typeof<'T>.GetProperty("Pickler")
                 if isNull mi |> not then (try mi.GetValue(null) :?> JsonPickler<'T> with _ -> failwithf "Type %O must define a static property Pickler of type JsonPickler<%O>" typeof<'T> typeof<'T>) else
+                //let p = List.tryPick (fun (x: ParserCrateEval) -> x.Create<'T>()) customRules
+                //if p.IsSome then p.Value else
                 match shapeof<'T> with
                 | Shape.Unit -> mkPickler (fun _ -> JSON.Null) (fun _ _ -> Success ())
                 | Shape.Bool ->
@@ -232,7 +253,7 @@ module Json =
                     mkPickler (fun (dt: DateTime) -> dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
                         (fun _ json ->
                             match json with
-                            | JSON.String s -> (try DateTime.ParseExact (s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |], CultureInfo.InvariantCulture, DateTimeStyles.AdjustToUniversal) |> Success with err -> Failure err)
+                            | JSON.String s -> try DateTime.ParseExact (s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal) |> Success with err -> Failure err
                             | json -> jsonErr("Expected a formatted DateTime string", json))
                 | Shape.DateTimeOffset ->
                     mkPickler (fun (dt: DateTimeOffset) -> dt.ToString("o", CultureInfo.InvariantCulture) |> JSON.String)
@@ -410,5 +431,6 @@ module Json =
         let fromString<'T> (str: string) = str |> Parsing.parseString |> JsonResult.make fromJson<'T>
         let fromStream<'T> (nameOfStream, stream) = stream |> Parsing.parseStream nameOfStream |> JsonResult.make fromJson<'T>
         let fromFile<'T> (filePath: string) = try filePath |> Parsing.parseFile |> JsonResult.make fromJson<'T> with err -> JsonResult.ParseFailure err
+
 
     type JSON with static member Pickler: Json.Mapping.JsonPickler<JSON> = Json.Mapping.mkPickler id (fun _ -> JsonMapResult.Success)

@@ -62,6 +62,14 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
             (fun (o: POCO<'T>) -> tP.Encode(o.Value))
             (fun (o: POCO<'T>) json -> tP.Decode(o.DefaultValue)(json) |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
 
+//Json.Mapping.Rules.addTypeRule<POCO<'T>>
+    //(fun (o: POCO<'T>) -> Json.Mapping.getPickler<'T>().Encode(o.Value))
+    //(fun (o: POCO<'T>) json -> Json.Mapping.getPickler<'T>().Decode o.DefaultValue json |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
+do 
+    Json.Mapping.Rules.addTypeRule<int * int>
+        (fun (x, y) -> JSON.Null)
+        (fun (x, y) json -> JsonMapResult.Success(0, y))
+
 type [<Json.AllRequired>] ComplexRecord = {
     union: Union<int>
     stunion: StructUnion
@@ -89,6 +97,7 @@ let ExpectFailure = function JsonMapResult.Success _ -> Assert.Fail("Mapping was
 let ExpectSuccess = function JsonMapResult.Failure v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
 let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.toString |> (fun j -> printfn "%s" j; j) |> Json.fromString<'T> |> JsonResult.value)
 
+let [<Test>] CustomRuleRoundTrip() = (7, 9) |> RoundTrip
 let [<Test>] PrimitiveRoundTrip() = PrimitiveRecord.Default |> RoundTrip
 let [<Test>] StructRecordRoundTrip() = StructRecord.Default |> RoundTrip
 let [<Test>] OptionRoundTrip() = [Some 0; None] |> List.map RoundTrip |> ignore; Assert.Pass()
