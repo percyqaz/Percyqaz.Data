@@ -7,7 +7,11 @@ open NUnit.Framework
 
 [<SetUp>]
 let Setup () =
-    ()
+    Json.Mapping.Rules.addTypeRuleWithDefault<int * int>
+        (fun (x, y) -> JSON.Null)
+        (fun (x, y) json -> JsonMapResult.Success(7, y))
+        (0, 9)
+    Json.Mapping.Rules.addPicklerRule()
 
 type Tuple = string * int
 
@@ -65,10 +69,6 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
 //Json.Mapping.Rules.addTypeRule<POCO<'T>>
     //(fun (o: POCO<'T>) -> Json.Mapping.getPickler<'T>().Encode(o.Value))
     //(fun (o: POCO<'T>) json -> Json.Mapping.getPickler<'T>().Decode o.DefaultValue json |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
-do 
-    Json.Mapping.Rules.addTypeRule<int * int>
-        (fun (x, y) -> JSON.Null)
-        (fun (x, y) json -> JsonMapResult.Success(0, y))
 
 type [<Json.AllRequired>] ComplexRecord = {
     union: Union<int>

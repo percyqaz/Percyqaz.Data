@@ -8,10 +8,10 @@
     <PackageProjectUrl>https://github.com/percyqaz/Percyqaz.Json</PackageProjectUrl>
     <RepositoryUrl>https://github.com/percyqaz/Percyqaz.Json</RepositoryUrl>
     <PackageLicenseFile>LICENSE</PackageLicenseFile>
-    <Version>1.2.3</Version>
+    <Version>1.2.5</Version>
     <Description>Yet another JSON library, with null-safety for F# types and high version tolerance</Description>
-    <AssemblyVersion>1.2.3.0</AssemblyVersion>
-    <FileVersion>1.2.3.0</FileVersion>
+    <AssemblyVersion>1.2.5.0</AssemblyVersion>
+    <FileVersion>1.2.5.0</FileVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'">

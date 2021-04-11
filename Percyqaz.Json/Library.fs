@@ -168,7 +168,7 @@ module Json =
             }
             
             type ParserCrateEval =
-                abstract member Create<'T> : unit -> JsonPickler<'T> option
+                abstract member Create<'T> : 'T -> JsonPickler<'T> option
 
             let mutable private customRules: ParserCrateEval list = []
             let private cache = new TypeGenerationContext()
@@ -177,19 +177,44 @@ module Json =
             let jsonErr (desc, json) = Exception(sprintf "%s\nReceived JSON: %A" desc json) |> Failure
 
             module Rules =
-                type ParserCrate =
-                    abstract member Encode<'T> : 'T -> JSON
-                    abstract member Decode<'T> : 'T -> JSON -> JsonMapResult<'T>
 
-                let addTypeRule<'T> (encode: 'T -> JSON) (decode: 'T -> JSON -> JsonMapResult<'T>) =
-                    let rule =
-                        { new ParserCrateEval with
-                            override this.Create() = Some (mkPickler encode decode) }
+                let addTypeRuleUnchecked<'A> (encode: 'A -> JSON) (decode: 'A -> JSON -> JsonMapResult<'A>) =
+                    let rule = { new ParserCrateEval with override this.Create<'T>(x: 'T) = if typeof<'T> = typeof<'A> then Some (mkPickler encode decode) else None }
                     customRules <- rule :: customRules
 
-                //let addGenericRule (check: Type -> bool) (crate: ParserCrate) =
-                //    let rule = fun t -> if check t then Some (t |> encoder |> unbox, t |> decode |> unbox) else None
-                //    customRules <- rule :: customRules
+                let addTypeRule<'A> (encode: 'A -> JSON) (decode: 'A -> JSON -> JsonMapResult<'A>) =
+                    let decode = fun x json ->
+                        if obj.ReferenceEquals(x, null) then
+                            jsonErr(sprintf "The decoding rule for type %O requires a pre-existing instance" typeof<'A>, json)
+                        else decode x json
+                    addTypeRuleUnchecked encode decode
+
+                let addTypeRuleWithDefault<'A> (encode: 'A -> JSON) (decode: 'A -> JSON -> JsonMapResult<'A>) (defaultValue: 'A) =
+                    let decode = (fun x -> if obj.ReferenceEquals(x, null) then defaultValue else x) >> decode
+                    addTypeRuleUnchecked encode decode
+
+                (*
+                https://stackoverflow.com/questions/457676/check-if-a-class-is-derived-from-a-generic-class
+                let addPolymorphicRule<'A> (encode: 'A -> JSON) (decode: 'A -> JSON -> JsonMapResult<'A>) =
+                    let rec isSubtypeOf baseType checkType =
+                        if checkType <> typeof<obj> && checkType <> null then
+                            let checkType<'A>
+                    let rule = { new ParserCrateEval with
+                        override this.Create<'T>(x: 'T) =
+                            let encode = fun x -> encode (x :> 'A)
+                            if typeof<'T> then Some (mkPickler encode decode) else None }
+                    customRules <- rule :: customRules
+                    () *)
+
+                let addPicklerRule() =
+                    let rule = { new ParserCrateEval with
+                        override this.Create<'T> _ =
+                            let mi = typeof<'T>.GetProperty("Pickler")
+                            if isNull mi |> not then
+                                try mi.GetValue(null) :?> JsonPickler<'T> |> Some
+                                with _ -> failwithf "Type %O must define a static property Pickler of type JsonPickler<%O>" typeof<'T> typeof<'T>
+                            else None }
+                    customRules <- rule :: customRules
 
             let private decodeList decoder json =
                 let o = Unchecked.defaultof<'t>
@@ -208,7 +233,7 @@ module Json =
                     Option.defaultValue (Success l) failure
                 | _ -> jsonErr("Expected a JSON array", json)
 
-            let inline private mkNumericPickler (encode: 'T -> string) (decode: (string *  IFormatProvider) -> 'T) =
+            let inline private mkNumericPickler (encode: 'T -> string) (decode: (string * IFormatProvider) -> 'T) =
                 mkPickler (encode >> JSON.Number) (fun _ json -> match json with JSON.String s | JSON.Number s -> (try decode(s, CultureInfo.InvariantCulture) |> Success with err -> Failure err) | json -> jsonErr("Expected a number", json))
 
             let rec getPickler<'T>() : JsonPickler<'T> =
@@ -219,10 +244,8 @@ module Json =
                         | Cached(value = f) -> f | NotCached t -> let p = genPickler<'T>() in cache.Commit t p)
 
             and private genPickler<'T>() : JsonPickler<'T> =
-                let mi = typeof<'T>.GetProperty("Pickler")
-                if isNull mi |> not then (try mi.GetValue(null) :?> JsonPickler<'T> with _ -> failwithf "Type %O must define a static property Pickler of type JsonPickler<%O>" typeof<'T> typeof<'T>) else
-                //let p = List.tryPick (fun (x: ParserCrateEval) -> x.Create<'T>()) customRules
-                //if p.IsSome then p.Value else
+                let p = List.tryPick (fun (x: ParserCrateEval) -> x.Create<'T> Unchecked.defaultof<'T>) customRules
+                if p.IsSome then p.Value else
                 match shapeof<'T> with
                 | Shape.Unit -> mkPickler (fun _ -> JSON.Null) (fun _ _ -> Success ())
                 | Shape.Bool ->
@@ -413,7 +436,7 @@ module Json =
                                     d o j
                                 with err -> Failure (Exception(sprintf "Unexpected tag '%s'" s, err))
                             | _ -> jsonErr("Expected a JSON object or a JSON string", json))
-                | _ -> failwithf "The type '%O' is unsupported; Declare a static property Pickler to implement your own behaviour" typeof<'T>
+                | _ -> failwithf "The type '%O' is unsupported; Create a custom rule to implement your own behaviour" typeof<'T>
 
         open System.IO
 
