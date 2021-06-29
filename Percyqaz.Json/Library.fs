@@ -6,13 +6,13 @@ module Json =
     open System.Globalization
 
     type JSON =
-    | Object of Map<string, JSON>
-    | Array of JSON list
-    | String of string
-    | Number of string
-    | True
-    | False
-    | Null
+        | Object of Map<string, JSON>
+        | Array of JSON list
+        | String of string
+        | Number of string
+        | True
+        | False
+        | Null
 
     type JsonResult<'T> = Success of 'T | MapFailure of Exception | ParseFailure of Exception
     type JsonMapResult<'T> = Success of 'T | Failure of Exception
@@ -79,7 +79,7 @@ module Json =
                 let listBetweenStrings sOpen sClose pElement f =
                     between (str sOpen) (str sClose)
                             (ws >>. sepBy (pElement .>> ws) (str "," >>. ws) |>> f)
-                let jlist   = listBetweenStrings "[" "]" jvalue JSON.Array
+                let jlist = listBetweenStrings "[" "]" jvalue JSON.Array
                 let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
                 let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> JSON.Object)
                 do jvalueRef := choice [jobject; jlist; jstring; jtrue; jfalse; jnull; jnumber]
@@ -92,7 +92,11 @@ module Json =
         module Formatting =
             open System.Text
 
-            let stringBuildJson json =
+            let stringBuildJson expandObj expandArray json =
+
+                let sb = new StringBuilder()
+                let append (x: string) = sb.Append x |> ignore
+
                 let escapeChars =
                     [| '"'; '\\'; '\n'; '\r'; '\t'; '\b'; '\f'
                        '\u0000'; '\u0001'; '\u0002'; '\u0003'
@@ -113,59 +117,82 @@ module Json =
                     | '\u0019' -> @"\u0019" | '\u001A' -> @"\u001A" | '\u001B' -> @"\u001B" | '\u001C' -> @"\u001C" | '\u001D' -> @"\u001D"
                     | '\u001E' -> @"\u001E" | '\u001F' -> @"\u001F" | c -> @"\u" + (int c).ToString("X4", CultureInfo.InvariantCulture)
 
-                let inline append (s: string) (sb: StringBuilder) = sb.Append s
-                let inline appendSubstr (sb: StringBuilder) (s: string) start count = sb.Append (s, start, count) |> ignore
+                let appendSubstr (s: string) start count = sb.Append (s, start, count) |> ignore
 
-                let writeString (cs: string) (sb: StringBuilder) =
+                let writeString (cs: string) =
                     let rec escapeState index =
-                        append (escaped cs.[index]) sb |> ignore
+                        append (escaped cs.[index])
                         let nextIndex = index + 1
                         if nextIndex < cs.Length then
                             if isEscapeChar cs.[nextIndex] |> not then coreState nextIndex else escapeState nextIndex
                     and coreState index =
                         let nextEscapeIndex = cs.IndexOfAny(escapeChars, index)
                         if nextEscapeIndex = -1 then
-                            appendSubstr sb cs index (cs.Length - index)
+                            appendSubstr cs index (cs.Length - index)
                         else
-                            appendSubstr sb cs index (nextEscapeIndex - index)
+                            appendSubstr cs index (nextEscapeIndex - index)
                             escapeState nextEscapeIndex
                     coreState 0
-                    sb
 
-                let rec stringifyJson (sb: StringBuilder) =
-                    let inline append (s: string) (sb: StringBuilder) = sb.Append s
+                let mutable indent = 0
+
+                let newline() =
+                    append "\n"
+                    append (String.replicate indent "    ")
+
+                let rec stringifyJson =
                     function
-                    | JSON.Null -> sb.Append "null"
-                    | JSON.True -> sb.Append "true"
-                    | JSON.False -> sb.Append "false"
-                    | JSON.Number s -> sb.Append s
-                    | JSON.String s -> sb |> append "\"" |> writeString s |> append "\""
+                    | JSON.Null -> append "null"
+                    | JSON.True -> append "true"
+                    | JSON.False -> append "false"
+                    | JSON.Number s -> append s
+                    | JSON.String s -> append "\""; writeString s; append "\""
                     | JSON.Array xs ->
-                        let rec f xs sb =
-                            match xs with [] -> sb | x::[] -> stringifyJson sb x | x::xs -> stringifyJson sb x |> append ", " |> f xs
-                        sb |> append "[" |> f xs |> append "]"
-                    | JSON.Object m ->
-                        let rec f xs sb =
+                        let rec f xs =
                             match xs with
-                            | [] -> sb
-                            | (k, x) :: [] ->
-                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson sb x
-                            | (k, x) :: xs ->
-                                sb |> append "\"" |> writeString k |> append "\": " |> fun sb -> stringifyJson sb x |> append ", " |> f xs
-                        sb |> append "{" |> f (Map.toList m) |> append "}"
-                stringifyJson (StringBuilder()) json
+                            | [] -> ()
+                            | x :: [] -> stringifyJson x
+                            | x :: xs -> stringifyJson x; append ", "; (if expandArray then newline()); f xs
+                        if expandArray then
+                            append "["
+                            indent <- indent + 1
+                            newline()
+                            f xs
+                            indent <- indent - 1
+                            newline()
+                            append "]"
+                        else append "["; f xs; append "]"
+                    | JSON.Object m ->
+                        let rec f xs =
+                            match xs with
+                            | [] -> ()
+                            | (k, x) :: [] -> append "\""; writeString k; append "\": "; stringifyJson x
+                            | (k, x) :: xs -> append "\""; writeString k; append "\": "; stringifyJson x; append ", "; (if expandObj then newline()); f xs
+                        if expandObj then
+                            append "{"
+                            indent <- indent + 1
+                            newline()
+                            f (Map.toList m)
+                            indent <- indent - 1
+                            newline()
+                            append "}"
+                        else append "{"; f (Map.toList m); append "}"
 
-            let formatJson json = (stringBuildJson json).ToString()
+                stringifyJson json
+                sb.ToString()
+
+            let formatJson json = stringBuildJson true false json
 
         module Mapping =
 
             open TypeShape.Core
             open TypeShape.Core.Utils
 
-            type JsonPickler<'T> = {
-                Encode: 'T -> JSON
-                Decode: 'T -> JSON -> JsonMapResult<'T>
-            }
+            type JsonPickler<'T> =
+                {
+                    Encode: 'T -> JSON
+                    Decode: 'T -> JSON -> JsonMapResult<'T>
+                }
             
             type ParserCrateEval =
                 abstract member Create<'T> : 'T -> JsonPickler<'T> option
@@ -263,8 +290,6 @@ module Json =
                 | Shape.UInt32 -> mkNumericPickler (fun (i: uint32) -> i.ToString CultureInfo.InvariantCulture) UInt32.Parse
                 | Shape.Int64 -> mkNumericPickler (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) Int64.Parse
                 | Shape.UInt64 -> mkNumericPickler (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) UInt64.Parse
-                | Shape.IntPtr -> failwith "nyi"
-                | Shape.UIntPtr -> failwith "nyi"
                 | Shape.BigInt -> mkNumericPickler (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) Numerics.BigInteger.Parse
                 | Shape.Single -> mkNumericPickler (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) Single.Parse
                 | Shape.Double -> mkNumericPickler (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) Double.Parse
