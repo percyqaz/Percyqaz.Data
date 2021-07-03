@@ -7,7 +7,7 @@ open Percyqaz.Json.Json
 open NUnit.Framework
 
 
-let Json = new JsonEncoder()
+let Json = new JsonEncoder({ JsonSettings.Default with FormatExpandObjects = false})
 
 (*
 [<SetUp>]
