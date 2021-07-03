@@ -188,7 +188,7 @@ module Json =
                     EncodeMember: 'T -> JSON
                     DecodeMember: 'T -> JSON -> 'T
 
-                    Default: unit -> 'U
+                    DefaultMember: unit -> 'U
                 }
             
             type JsonCodec<'T> = 
@@ -464,13 +464,8 @@ module Json =
                         let tP = getCodec(cache, settings, rules)
                         {
                             EncodeMember = fun o -> tP.Encode(shape.Get o)
-                            DecodeMember = fun o json ->
-                                let existing =
-                                    try shape.Get o
-                                    with :? NullReferenceException ->
-                                        failwithf "tried to get field '%s' from %O but the object itself was null" field.Label typeof<'Class>
-                                shape.Set o (tP.Decode (shape.Get o) json)
-                            Default = fun () -> tP.Default() :> obj
+                            DecodeMember = fun o json -> shape.Set o (tP.Decode (shape.Get o) json)
+                            DefaultMember = fun () -> tP.Default() :> obj
                         }
                 } |> field.Accept
 
@@ -481,16 +476,16 @@ module Json =
                     Decode = fun o json ->
                         match json with
                         | JSON.Array xs when List.length xs = shape.Elements.Length ->
-                            Array.ofList xs
-                            |> Array.zip codecs
-                            |> Array.iter (fun ((codec, _), json) -> codec.DecodeMember o json |> ignore)
+                            let mutable o = o
+                            for ((codec, _), json) in Array.ofList xs |> Array.zip codecs do
+                                o <- codec.DecodeMember o json
                             o
                         | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" shape.Elements.Length)
                         | _ -> Error.expectedArr json
                     Default =
                         let typ = typeof<'T>
                         fun () ->
-                            Array.map (fun ((codec: JsonPartialCodec<'T, obj>), _) -> codec.Default()) codecs
+                            Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
                             |> fun os -> FSharpValue.MakeTuple(os, typ) :?> 'T
                 }
 
@@ -510,7 +505,7 @@ module Json =
                             Encode = fun case -> codecs.[0].EncodeMember case
                             Decode = fun o json -> codecs.[0].DecodeMember o json
                             Default = fun () ->
-                                FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].Default()|]) :?> 'Class
+                                FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].DefaultMember()|]) :?> 'Class
                         }
                     | n ->
                         {
@@ -518,15 +513,15 @@ module Json =
                             Decode = fun o json ->
                                 match json with
                                 | JSON.Array xs when xs.Length = n ->
-                                    Array.ofList xs
-                                    |> Array.zip codecs
-                                    |> Array.iter (fun (codec, json) -> codec.DecodeMember o json |> ignore)
+                                    let mutable o = o
+                                    for (codec, json) in Array.ofList xs |> Array.zip codecs do
+                                        o <- codec.DecodeMember o json
                                     o
                                 | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" n)
                                 // maybe in future, support object with named members of union?
                                 | _ -> Error.expectedArr json
                             Default = fun () ->
-                                let os = Array.map (fun (codec: JsonPartialCodec<'Class, obj>) -> codec.Default()) codecs
+                                let os = Array.map (fun codec -> codec.DefaultMember()) codecs
                                 FSharpValue.MakeUnion(case.CaseInfo, os) :?> 'Class
                         }
                 let codecs = shape.UnionCases |> Array.map (fun c -> (case c, c.Arity))
@@ -552,7 +547,7 @@ module Json =
                             codec.DecodeWithDefault innerJson
                         | _ -> Error.expectedObj json
                     Default =
-                        // this is unused in most cases but needs to be well-formed as it can end up consumed by regular F# code
+                        // this is unused by Decode, but still might get consumed by regular F# code
                         let value = (fst codecs.[0]).Default()
                         fun () -> value
                 }
@@ -568,19 +563,19 @@ module Json =
                     Decode = fun (o: 'T) json ->
                         match json with
                         | JSON.Object map ->
-                            Array.iter
-                                ( fun (codec, name) ->
-                                    if Map.containsKey name map then
-                                        codec.DecodeMember o map.[name] |> ignore
-                                    // else fail if required
-                                ) codecs; o
+                            
+                            let mutable o = o
+                            for (codec, name) in codecs do
+                                if Map.containsKey name map then
+                                    o <- codec.DecodeMember o map.[name]
+                                // else fail if required
+                            o
                         | _ -> Error.expectedObj json
                     Default =
-                        // allow for Default implementation check here
                         let typ = typeof<'T>
                         let mi = typ.GetProperty("Default", typeof<'T>)
                         if isNull mi then fun () ->
-                            Array.map (fun ((codec: JsonPartialCodec<'T, obj>), _) -> codec.Default()) codecs
+                            Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
                             |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
                             |> IDPRINT
                         else fun () -> mi.GetValue(null) :?> 'T
