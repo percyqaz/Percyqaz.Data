@@ -26,6 +26,7 @@ module Json =
             FormatExpandObjects: bool
 
             AllowNullStrings: bool
+            AllowNullArrays: bool
         }
         static member Default =
             {
@@ -33,6 +34,7 @@ module Json =
                 FormatExpandObjects = true
 
                 AllowNullStrings = false
+                AllowNullArrays = false
             }
 
     module Json =
@@ -181,8 +183,8 @@ module Json =
 
             type JsonPartialCodec<'T, 'U> =
                 {
-                    Encode: 'T -> JSON
-                    Decode: 'T -> JSON -> 'T
+                    EncodeMember: 'T -> JSON
+                    DecodeMember: 'T -> JSON -> 'T
 
                     Default: unit -> 'U
                 }
@@ -194,8 +196,13 @@ module Json =
 
                     Default: unit -> 'T
                 }
-                member this.DecodeNonThrowing x json : JsonResult<'T> =
-                    try this.Decode x json |> Ok
+                member this.DecodeWithDefault json : 'T =
+                    let def =
+                        let v = this.Default()
+                        v
+                    this.Decode def json
+                member this.DecodeWithDefaultNonThrowing json : JsonResult<'T> =
+                    try this.DecodeWithDefault json |> Ok
                     with :? MapFailure as e -> Error (e :> Exception)
 
             module Codec =
@@ -270,7 +277,7 @@ module Json =
                         Encode = JSON.Bool
                         Decode = fun _ json ->
                             match json with
-                            | JSON.String "" | JSON.Number "0" | JSON.Null | JSON.Bool false -> false
+                            | JSON.String "" | JSON.Number "0" | JSON.Bool false -> false
                             | JSON.String _ | JSON.Number "1" | JSON.Bool true -> true
                             | _ -> Error.expectedBool json
                         Default = fun () -> false
@@ -375,35 +382,42 @@ module Json =
                 | Shape.TimeSpan -> Helpers.cast Primitives.timespan
                 | Shape.DateTime -> Helpers.cast Primitives.datetime
                 | Shape.DateTimeOffset -> Helpers.cast Primitives.datetimeoffset
-                | Shape.FSharpOption s -> option (cache, rules) s
                 | Shape.Enum s -> enum (cache, rules) s
+
+                | Shape.FSharpOption s -> option (cache, rules) s
                 | Shape.Tuple (:? ShapeTuple<'T> as shape) -> tuple (cache, rules) shape
                 | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) -> union (cache, rules) shape
                 | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) -> record (cache, rules) shape
+                | Shape.Dictionary s -> dict (cache, rules) s
+                | Shape.FSharpMap s -> map (cache, rules) s
+                | Shape.FSharpSet s -> set (cache, rules) s
+                | Shape.Array s when s.Rank = 1 -> array (cache, rules) s
+                | Shape.FSharpList s -> fsharplist (cache, rules) s
+                | Shape.ResizeArray s -> csharplist (cache, rules) s
                 | _ -> failwithf "The type '%O' is unsupported; Create a custom rule to implement your own behaviour" typeof<'T>
 
-            // todo: special cases for bool option and string option
+            and private enum (cache, rules) (s: IShapeEnum) =
+                { new IEnumVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
+                        getCodec<'u>(cache, rules)
+                        |> Codec.map LanguagePrimitives.EnumToValue LanguagePrimitives.EnumOfValue<'u, 't>
+                        |> Helpers.cast
+                } |> s.Accept
+
+            // todo: special case for string option
             and private option (cache, rules) (s: IShapeFSharpOption) =
                 { new ITypeVisitor<JsonCodec<'T>> with
                     member _.Visit<'t>() =
-                        let tP = getCodec(cache, rules)
+                        let tP = getCodec<'t>(cache, rules)
                         {
                             Encode = function Some v -> tP.Encode v | None -> JSON.Null
                             Decode = fun _ json ->
                                 match json with
                                 | JSON.Null -> None
-                                | _ -> tP.Decode Unchecked.defaultof<'t> json |> Some
+                                | _ -> tP.DecodeWithDefault json |> Some
                             Default = fun () -> None
                         } |> Helpers.cast
                 } |> s.Element.Accept
-
-            and private enum (cache, rules) (s: IShapeEnum) =
-                { new IEnumVisitor<JsonCodec<'T>> with
-                    member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
-                        getCodec(cache, rules)
-                        |> Codec.map LanguagePrimitives.EnumToValue LanguagePrimitives.EnumOfValue<'u, 't>
-                        |> Helpers.cast
-                } |> s.Accept
 
             // helper function for members of objects
             and private elem (cache, rules) (field: IShapeMember<'Class>) =
@@ -411,22 +425,22 @@ module Json =
                     member _.Visit (shape: ShapeMember<'Class, _>) =
                         let tP = getCodec(cache, rules)
                         {
-                            Encode = fun o -> tP.Encode(shape.Get o)
-                            Decode = fun o json -> shape.Set o (tP.Decode (shape.Get o) json)
+                            EncodeMember = fun o -> tP.Encode(shape.Get o)
+                            DecodeMember = fun o json -> shape.Set o (tP.Decode (shape.Get o) json)
                             Default = fun () -> tP.Default() :> obj
-                        } : JsonPartialCodec<'Class, _>
+                        }
                 } |> field.Accept
 
             and private tuple (cache, rules) (shape: ShapeTuple<'T>) =
                 let codecs = shape.Elements |> Array.map (fun e -> (elem (cache, rules) e, e.Label))
                 {
-                    Encode = fun o -> codecs |> Array.map (fun (codec, _) -> codec.Encode o) |> List.ofArray |> JSON.Array
+                    Encode = fun o -> codecs |> Array.map (fun (codec, _) -> codec.EncodeMember o) |> List.ofArray |> JSON.Array
                     Decode = fun o json ->
                         match json with
                         | JSON.Array xs when List.length xs = shape.Elements.Length ->
                             Array.ofList xs
                             |> Array.zip codecs
-                            |> Array.iter (fun ((codec, _), json) -> codec.Decode o json |> ignore)
+                            |> Array.iter (fun ((codec, _), json) -> codec.DecodeMember o json |> ignore)
                             o
                         | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" shape.Elements.Length)
                         | _ -> Error.expectedArr json
@@ -450,20 +464,20 @@ module Json =
                         }
                     | 1 ->
                         {
-                            Encode = fun case -> codecs.[0].Encode case
-                            Decode = fun o json -> codecs.[0].Decode o json
+                            Encode = fun case -> codecs.[0].EncodeMember case
+                            Decode = fun o json -> codecs.[0].DecodeMember o json
                             Default = fun () ->
                                 FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].Default()|]) :?> 'Class
                         }
                     | n ->
                         {
-                            Encode = fun case -> Array.map (fun (codec: JsonPartialCodec<'Class, obj>) -> codec.Encode case) codecs |> List.ofArray |> JSON.Array
+                            Encode = fun case -> Array.map (fun codec-> codec.EncodeMember case) codecs |> List.ofArray |> JSON.Array
                             Decode = fun o json ->
                                 match json with
                                 | JSON.Array xs when xs.Length = n ->
                                     Array.ofList xs
                                     |> Array.zip codecs
-                                    |> Array.iter (fun (codec, json) -> codec.Decode o json |> ignore)
+                                    |> Array.iter (fun (codec, json) -> codec.DecodeMember o json |> ignore)
                                     o
                                 | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" n)
                                 // maybe in future, support object with named members of union?
@@ -484,15 +498,15 @@ module Json =
                         match json with
                         | JSON.String s ->
                             let caseId = try shape.GetTag s with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
-                            let (codec, arity) = codecs.[caseId]
-                            codec.Decode (codec.Default()) JSON.Null // will throw a sensible error for non-0-arity cases, and work for 0-arity cases
+                            let (codec, _) = codecs.[caseId]
+                            codec.DecodeWithDefault JSON.Null // will throw a sensible error for non-0-arity cases, and work for 0-arity cases
                         | JSON.Object m ->
                             let caseName, innerJson =
                                 if m.IsEmpty then Error.generic json "Expected a nonempty JSON object"
                                 else Map.toList m |> List.head
                             let caseId = try shape.GetTag caseName with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
                             let (codec, _) = codecs.[caseId]
-                            codec.Decode (codec.Default()) innerJson
+                            codec.DecodeWithDefault innerJson
                         | _ -> Error.expectedObj json
                     Default = fun () -> Unchecked.defaultof<'T> // this never gets used
                 }
@@ -502,26 +516,140 @@ module Json =
                 {
                     Encode = fun (o: 'T) ->
                         Array.fold
-                            (fun map ((codec: JsonPartialCodec<'T, obj>), name) -> Map.add name (codec.Encode o) map)
+                            (fun map (codec, name) -> Map.add name (codec.EncodeMember o) map)
                             Map.empty codecs
                         |> JSON.Object
                     Decode = fun (o: 'T) json ->
                         match json with
                         | JSON.Object map ->
                             Array.iter
-                                ( fun ((codec: JsonPartialCodec<'T, obj>), name) ->
+                                ( fun (codec, name) ->
                                     if Map.containsKey name map then
-                                        codec.Decode o map.[name] |> ignore
+                                        codec.DecodeMember o map.[name] |> ignore
                                     // else fail if required
                                 ) codecs; o
                         | _ -> Error.expectedObj json
                     Default =
-                        // allow for Default instance check here
+                        // allow for Default implementation check here
                         let typ = typeof<'T>
                         fun () ->
                             Array.map (fun ((codec: JsonPartialCodec<'T, obj>), _) -> codec.Default()) codecs
                             |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
                 }
+
+            and private dict (cache, rules) (s: IShapeDictionary) =
+                { new IDictionaryVisitor<JsonCodec<'T>> with
+                    member _.Visit<'K, 'V when 'K : equality>() =
+                        if typeof<'K> = typeof<string> then
+                            let tP = getCodec<'V>(cache, rules)
+                            {
+                                Encode = fun dictionary ->
+                                    dictionary
+                                    |> Seq.map (|KeyValue|)
+                                    |> Seq.map (fun (key, value) -> (key, tP.Encode value))
+                                    |> Map.ofSeq
+                                    |> JSON.Object
+                                Decode = fun _ json ->
+                                    match json with
+                                    | JSON.Object map ->
+                                        let d = new Collections.Generic.Dictionary<string, 'V>()
+                                        for (key, innerJson) in Map.toSeq map do
+                                            d.Add(key, tP.DecodeWithDefault innerJson)
+                                        d
+                                    | _ -> Error.expectedObj json
+                                Default = fun () -> new Collections.Generic.Dictionary<string, 'V>()
+                            } |> Helpers.cast
+                        else
+                            getCodec<('K * 'V) list>(cache, rules)
+                            |> Codec.map
+                                (Seq.map (|KeyValue|) >> List.ofSeq)
+                                ( fun xs ->
+                                    let d = new Collections.Generic.Dictionary<'K, 'V>()
+                                    for (key, value) in xs do
+                                        d.Add(key, value)
+                                    d )
+                            |> Helpers.cast
+                } |> s.Accept
+
+            and private map (cache, rules) (s: IShapeFSharpMap) =
+                { new IFSharpMapVisitor<JsonCodec<'T>> with
+                    member _.Visit<'K, 'V when 'K : comparison>() =
+                        if typeof<'K> = typeof<string> then
+                            let tP = getCodec<'V>(cache, rules)
+                            {
+                                Encode = Map.map (fun _ -> tP.Encode) >> JSON.Object
+                                Decode = fun _ json ->
+                                    match json with
+                                    | JSON.Object map -> Map.map (fun _ -> tP.DecodeWithDefault) map
+                                    // todo: support for list-style too?
+                                    | _ -> Error.expectedObj json
+                                Default = fun () -> Map.empty<string, 'V>
+                            } |> Helpers.cast
+                        else
+                            getCodec<('K * 'V) list>(cache, rules)
+                            |> Codec.map Map.toList Map.ofList
+                            |> Helpers.cast
+                } |> s.Accept
+
+            and private set (cache, rules) (s: IShapeFSharpSet) = failwith "nyi"
+
+            and private array (cache, rules) (s: IShapeArray) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        let tP = getCodec<'t>(cache, rules)
+                        {
+                            Encode = 
+                                if rules.AllowNullArrays then
+                                    function
+                                    | null -> JSON.Null
+                                    | xs -> Array.map tP.Encode xs |> List.ofArray |> JSON.Array
+                                else
+                                    function
+                                    | null -> invalidArg "" "Cannot serialize a null array"
+                                    | xs -> Array.map tP.Encode xs |> List.ofArray |> JSON.Array
+                            Decode = 
+                                if rules.AllowNullArrays then
+                                    fun _ json ->
+                                        match json with
+                                        | JSON.Null -> null
+                                        | JSON.Array xs -> xs |> Array.ofList |> Array.map tP.DecodeWithDefault
+                                        | _ -> Error.expectedArr json
+                                else
+                                    fun _ json ->
+                                        match json with
+                                        | JSON.Array xs -> xs |> Array.ofList |> Array.map tP.DecodeWithDefault
+                                        | _ -> Error.expectedArr json
+                            Default = fun () -> [||]
+                        } |> Helpers.cast
+                } |> s.Element.Accept
+
+            and private fsharplist (cache, rules) (s: IShapeFSharpList) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        let tP = getCodec<'t>(cache, rules)
+                        {
+                            Encode = (List.map tP.Encode) >> JSON.Array
+                            Decode = fun _ json ->
+                                match json with
+                                | JSON.Array xs -> List.map tP.DecodeWithDefault xs
+                                | _ -> Error.expectedArr json
+                            Default = fun () -> []
+                        } |> Helpers.cast
+                } |> s.Element.Accept
+
+            and private csharplist (cache, rules) (s: IShapeResizeArray) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        let tP = getCodec<'t>(cache, rules)
+                        {
+                            Encode = List.ofSeq >> List.map tP.Encode >> JSON.Array
+                            Decode = fun _ json ->
+                                match json with
+                                | JSON.Array xs -> List.map tP.DecodeWithDefault xs |> ResizeArray
+                                | _ -> Error.expectedArr json
+                            Default = fun () -> new ResizeArray<'t>()
+                        } |> Helpers.cast
+                } |> s.Element.Accept
 
     open System.IO
     open FParsec
@@ -548,7 +676,7 @@ module Json =
 
         member this.FromJson<'T> (json: JSON) : JsonResult<'T> = 
             let codec = Mapping.getCodec(cache, settings)
-            codec.DecodeNonThrowing (codec.Default()) json
+            codec.DecodeWithDefaultNonThrowing json
         
         member this.FromString<'T> (str: string) : JsonResult<'T> =
             match Parsing.parseString str with
@@ -563,7 +691,9 @@ module Json =
             |> Result.bind this.FromJson<'T>
 
         member this.FromFile<'T> (path: string) =
-            match Parsing.parseFile path with
-            | ParserResult.Success (res, _, _) -> Result.Ok res
-            | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception)
+            try Parsing.parseFile path |> Result.Ok
+            with :? FileNotFoundException as e -> Result.Error (e :> Exception)
+            |> Result.bind (function
+                | ParserResult.Success (res, _, _) -> Result.Ok res
+                | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception))
             |> Result.bind this.FromJson<'T>
