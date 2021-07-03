@@ -9,32 +9,23 @@ open NUnit.Framework
 
 let Json = new JsonEncoder({ JsonSettings.Default with FormatExpandObjects = false})
 
-(*
-[<SetUp>]
-let Setup () =
-    Json.Mapping.Rules.addTypeRuleWithDefault<int * int>
-        (fun (x, y) -> JSON.Null)
-        (fun (x, y) json -> JsonMapResult.Success(7, y))
-        (0, 9)
-    Json.Mapping.Rules.addPicklerRule() *)
-
 type Tuple = string * int
 
 type Union<'T> =
-| CaseOne of string
-| CaseTwo of label1: Union<'T> * label2: 'T
-| CaseThree
+    | CaseOne of string
+    | CaseTwo of label1: Union<'T> * label2: 'T
+    | CaseThree
 
 type Enum =
-| A = 1u
-| B = 2u
-| C = 4u
+    | A = 1u
+    | B = 2u
+    | C = 4u
 
 type StructTuple = (struct (int * int * int))
 
 type [<Struct>] StructUnion =
-| CaseOne of Tuple
-| CaseTwo
+    | CaseOne of Tuple
+    | CaseTwo
 
 type PrimitiveRecord =
     {
@@ -110,7 +101,6 @@ let [<Test>] DefaultGenerationTest() =
     printfn "%A" v
     Assert.Pass()
 
-let [<Test>] CustomRuleRoundTrip() = (7, 9) |> RoundTrip
 let [<Test>] PrimitiveRoundTrip() = PrimitiveRecord.Default |> RoundTrip
 let [<Test>] StructRecordRoundTrip() = StructRecord.Default |> RoundTrip
 let [<Test>] OptionRoundTrip() = [Some 0; None] |> List.map RoundTrip |> ignore; Assert.Pass()
