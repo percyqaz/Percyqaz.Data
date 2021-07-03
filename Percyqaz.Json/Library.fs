@@ -229,7 +229,8 @@ module Json =
 
                 let generic json msg = raise (MapFailure (json, msg))
 
-                // rethrows errors as MapFailure errors
+                // rethrows all errors as MapFailure errors
+                // only used in contexts where you know you want to catch all exceptions
                 let wrap json msg (func: 'A -> 'B) : 'A -> 'B =
                     fun a ->
                         try func a
@@ -265,7 +266,7 @@ module Json =
                             let mi = typeof<'t>.GetMethod("JsonCodec")
                             if not (isNull mi) then
                                 mi.Invoke(null, [|cache; settings; rules|]) :?> JsonCodec<'t> |> Some
-                                // error formatting later
+                                // todo: better error message than what this will normally throw
                             else None
                     }
 
@@ -442,11 +443,12 @@ module Json =
                         |> Helpers.cast
                 } |> s.Accept
 
-            // todo: special case for string option
             and private option (cache, settings, rules) (s: IShapeFSharpOption) =
                 { new ITypeVisitor<JsonCodec<'T>> with
                     member _.Visit<'t>() =
-                        let tP = getCodec<'t>(cache, settings, rules)
+                        let tP =
+                            if typeof<'t> = typeof<string> then Primitives.stringNoNull |> Helpers.cast
+                            else getCodec<'t>(cache, settings, rules)
                         {
                             Encode = function Some v -> tP.Encode v | None -> JSON.Null
                             Decode = fun _ json ->
