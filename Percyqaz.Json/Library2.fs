@@ -1,0 +1,569 @@
+﻿namespace Percyqaz
+
+module Json =
+    
+    open System
+    open System.Globalization
+
+    type JSON =
+        | Object of Map<string, JSON>
+        | Array of JSON list
+        | String of string // neither of these string values should be null
+        | Number of string
+        | Bool of bool
+        | Null
+
+    type ParseFailure(inner: FParsec.Error.ParserError) = inherit Exception()
+    type MapFailure(json: JSON, msg: string, inner: Exception option) = 
+        inherit Exception(sprintf "%s\nReceived JSON: %A" msg json)
+        new(json, msg) = MapFailure(json, msg, None)
+
+    type JsonResult<'T> = Result<'T, Exception>
+
+    type JsonSettings =
+        {
+            FormatExpandArrays: bool
+            FormatExpandObjects: bool
+
+            AllowNullStrings: bool
+        }
+        static member Default =
+            {
+                FormatExpandArrays = false
+                FormatExpandObjects = true
+
+                AllowNullStrings = false
+            }
+
+    module Json =
+
+        type RequiredAttribute() = inherit Attribute()
+
+        module Parsing =
+            open FParsec
+
+            // adapted directly from https://www.quanttec.com/fparsec/tutorial.html#parsing-json
+            let jsonParser =
+                let jvalue, jvalueRef = createParserForwardedToRef<JSON, unit>()
+
+                let jnull  = stringReturn "null" JSON.Null
+                let jtrue  = stringReturn "true" (JSON.Bool true)
+                let jfalse = stringReturn "false" (JSON.Bool false)
+                let jnumber = many1Satisfy (isNoneOf " \t\r\n}],") |>> JSON.Number
+
+                let str s = pstring s
+                let stringLiteral =
+
+                    let escape =
+                        anyOf "\"\\/bfnrt" |>> function | 'b' -> "\b" | 'f' -> "\u000C" | 'n' -> "\n" | 'r' -> "\r" | 't' -> "\t" | c -> string c
+                    let unicodeEscape =
+                        let hex2int c = (int c &&& 15) + (int c >>> 6) * 9
+                        str "u" >>. pipe4 hex hex hex hex (fun h3 h2 h1 h0 ->
+                            (hex2int h3) * 4096 + (hex2int h2) * 256 + (hex2int h1) * 16 + hex2int h0
+                            |> char |> string)
+                    let escapedCharSnippet = str "\\" >>. (escape <|> unicodeEscape)
+                    let normalCharSnippet = manySatisfy (fun c -> c <> '"' && c <> '\\')
+
+                    between (str "\"") (str "\"") (stringsSepBy normalCharSnippet escapedCharSnippet)
+
+                let ws = spaces
+                let jstring = stringLiteral |>> JSON.String
+                let listBetweenStrings sOpen sClose pElement f =
+                    between (str sOpen) (str sClose) (ws >>. sepBy (pElement .>> ws) (str "," >>. ws) |>> f)
+                let jlist = listBetweenStrings "[" "]" jvalue JSON.Array
+                let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
+                let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> JSON.Object)
+                do jvalueRef := choice [jobject; jlist; jstring; jtrue; jfalse; jnull; jnumber]
+                jvalue .>> eof
+
+            let parseStream name stream = runParserOnStream jsonParser () name stream Text.Encoding.UTF8
+            let parseFile path = runParserOnFile jsonParser () path Text.Encoding.UTF8
+            let parseString str = run jsonParser str
+
+        module Formatting =
+            open System.Text
+
+            let stringBuildJson expandObj expandArray json =
+
+                let sb = new StringBuilder()
+                let append (x: string) = sb.Append x |> ignore
+
+                let escapeChars =
+                    [| '"'; '\\'; '\n'; '\r'; '\t'; '\b'; '\f'
+                       '\u0000'; '\u0001'; '\u0002'; '\u0003'
+                       '\u0004'; '\u0005'; '\u0006'; '\u0007'
+                       '\u000B'; '\u000E'; '\u000F'
+                       '\u0010'; '\u0011'; '\u0012'; '\u0013'
+                       '\u0014'; '\u0015'; '\u0016'; '\u0017'
+                       '\u0018'; '\u0019'; '\u001A'; '\u001B'
+                       '\u001C'; '\u001D'; '\u001E'; '\u001F' |]
+                let isEscapeChar = function | '"' | '\\' -> true | c when c >= '\u0000' && c <= '\u001F' -> true | _ -> false
+                let isEscapeCharPred = System.Predicate<_> isEscapeChar
+                let escaped = function
+                    | '"' -> @"\""" | '\\' -> @"\\" | '\n' -> @"\n" | '\r' -> @"\r" | '\t' -> @"\t" | '\f' -> @"\f" | '\b' -> @"\b"
+                    | '\u0000' -> @"\u0000" | '\u0001' -> @"\u0001" | '\u0002' -> @"\u0002" | '\u0003' -> @"\u0003" | '\u0004' -> @"\u0004"
+                    | '\u0005' -> @"\u0005" | '\u0006' -> @"\u0006" | '\u0007' -> @"\u0007" | '\u000B' -> @"\u000B" | '\u000E' -> @"\u000E"
+                    | '\u000F' -> @"\u000F" | '\u0010' -> @"\u0010" | '\u0011' -> @"\u0011" | '\u0012' -> @"\u0012" | '\u0013' -> @"\u0013"
+                    | '\u0014' -> @"\u0014" | '\u0015' -> @"\u0015" | '\u0016' -> @"\u0016" | '\u0017' -> @"\u0017" | '\u0018' -> @"\u0018"
+                    | '\u0019' -> @"\u0019" | '\u001A' -> @"\u001A" | '\u001B' -> @"\u001B" | '\u001C' -> @"\u001C" | '\u001D' -> @"\u001D"
+                    | '\u001E' -> @"\u001E" | '\u001F' -> @"\u001F" | c -> @"\u" + (int c).ToString("X4", CultureInfo.InvariantCulture)
+
+                let appendSubstr (s: string) start count = sb.Append (s, start, count) |> ignore
+
+                let writeString (cs: string) =
+                    let rec escapeState index =
+                        append (escaped cs.[index])
+                        let nextIndex = index + 1
+                        if nextIndex < cs.Length then
+                            if isEscapeChar cs.[nextIndex] |> not then coreState nextIndex else escapeState nextIndex
+                    and coreState index =
+                        let nextEscapeIndex = cs.IndexOfAny(escapeChars, index)
+                        if nextEscapeIndex = -1 then
+                            appendSubstr cs index (cs.Length - index)
+                        else
+                            appendSubstr cs index (nextEscapeIndex - index)
+                            escapeState nextEscapeIndex
+                    coreState 0
+
+                let mutable indent = 0
+
+                let newline() =
+                    append "\n"
+                    append (String.replicate indent "    ")
+
+                let rec stringifyJson =
+                    function
+                    | JSON.Null -> append "null"
+                    | JSON.Bool x -> append (if x then "true" else "false")
+                    | JSON.Number s -> append s
+                    | JSON.String s -> append "\""; writeString s; append "\""
+                    | JSON.Array xs ->
+                        let rec f xs =
+                            match xs with
+                            | [] -> ()
+                            | x :: [] -> stringifyJson x
+                            | x :: xs -> stringifyJson x; append ", "; (if expandArray then newline()); f xs
+                        if expandArray then
+                            append "["
+                            indent <- indent + 1
+                            newline()
+                            f xs
+                            indent <- indent - 1
+                            newline()
+                            append "]"
+                        else append "["; f xs; append "]"
+                    | JSON.Object m ->
+                        let rec f xs =
+                            match xs with
+                            | [] -> ()
+                            | (k, x) :: [] -> append "\""; writeString k; append "\": "; stringifyJson x
+                            | (k, x) :: xs -> append "\""; writeString k; append "\": "; stringifyJson x; append ", "; (if expandObj then newline()); f xs
+                        if expandObj then
+                            append "{"
+                            indent <- indent + 1
+                            newline()
+                            f (Map.toList m)
+                            indent <- indent - 1
+                            newline()
+                            append "}"
+                        else append "{"; f (Map.toList m); append "}"
+
+                stringifyJson json
+                sb.ToString()
+
+            let formatJson json = stringBuildJson true false json
+
+        module Mapping =
+
+            open FSharp.Reflection
+            open TypeShape.Core
+            open TypeShape.Core.Utils
+
+            type JsonPartialCodec<'T, 'U> =
+                {
+                    Encode: 'T -> JSON
+                    Decode: 'T -> JSON -> 'T
+
+                    Default: unit -> 'U
+                }
+            
+            type JsonCodec<'T> = 
+                {
+                    Encode: 'T -> JSON
+                    Decode: 'T -> JSON -> 'T //may throw MapFailure exception
+
+                    Default: unit -> 'T
+                }
+                member this.DecodeNonThrowing x json : JsonResult<'T> =
+                    try this.Decode x json |> Ok
+                    with :? MapFailure as e -> Error (e :> Exception)
+
+            module Codec =
+
+                let map (enc: 'A -> 'B) (dec: 'B -> 'A) (codec: JsonCodec<'B>) : JsonCodec<'A> =
+                    let defaultInst = codec.Default >> dec
+                    {
+                        Encode = fun x -> enc x |> codec.Encode
+                        Decode = fun inst json -> codec.Decode (enc inst) json |> dec
+
+                        Default = defaultInst
+                    }
+
+            module Error =
+
+                let expectedObj json = raise (MapFailure (json, "Expected a JSON object"))
+                let expectedArr json = raise (MapFailure (json, "Expected a JSON array"))
+                let expectedStr json = raise (MapFailure (json, "Expected a string"))
+                let expectedNum json = raise (MapFailure (json, "Expected a number"))
+                let expectedBool json = raise (MapFailure (json, "Expected a boolean"))
+                let expectedNull json = raise (MapFailure (json, "Expected null"))
+
+                let generic json msg = raise (MapFailure (json, msg))
+
+                // rethrows errors as MapFailure errors
+                let wrap json msg (func: 'A -> 'B) : 'A -> 'B =
+                    fun a ->
+                        try func a
+                        with err -> raise (MapFailure(json, msg, Some err))
+
+            module Helpers =
+
+                let cast (codec: JsonCodec<_>) : JsonCodec<'T> =
+                    {
+                        Encode = unbox codec.Encode
+                        Decode = unbox codec.Decode
+
+                        Default = unbox codec.Default
+                    }
+                
+                let numericCodec (enc: 'T -> string) (dec: (string * IFormatProvider) -> 'T) =
+                    {
+                        Encode = enc >> JSON.Number
+                        Decode =
+                            fun _ json ->
+                                match json with
+                                | JSON.String s
+                                | JSON.Number s -> Error.wrap json "Could not parse number" dec (s, CultureInfo.InvariantCulture)
+                                | _ -> Error.expectedNum json
+                        Default = fun () -> Unchecked.defaultof<'T>
+                    }
+
+            module Primitives =
+                
+                let uint8 = Helpers.numericCodec (fun (i: byte) -> i.ToString CultureInfo.InvariantCulture) Byte.Parse
+                let int8 = Helpers.numericCodec (fun (i: sbyte) -> i.ToString CultureInfo.InvariantCulture) SByte.Parse
+                let uint16 = Helpers.numericCodec (fun (i: uint16) -> i.ToString CultureInfo.InvariantCulture) UInt16.Parse
+                let int16 = Helpers.numericCodec (fun (i: int16) -> i.ToString CultureInfo.InvariantCulture) Int16.Parse
+                let uint32 = Helpers.numericCodec (fun (i: uint32) -> i.ToString CultureInfo.InvariantCulture) UInt32.Parse
+                let int32 = Helpers.numericCodec (fun (i: int32) -> i.ToString CultureInfo.InvariantCulture) Int32.Parse
+                let uint64 = Helpers.numericCodec (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) UInt64.Parse
+                let int64 = Helpers.numericCodec (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) Int64.Parse
+                let bigint = Helpers.numericCodec (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) Numerics.BigInteger.Parse
+                let single = Helpers.numericCodec (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) Single.Parse
+                let double = Helpers.numericCodec (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) Double.Parse
+                let decimal = Helpers.numericCodec (fun (f: decimal) -> f.ToString CultureInfo.InvariantCulture) Decimal.Parse
+
+                let unit = { Encode = (fun _ -> JSON.Null); Decode = (fun _ _ -> ()); Default = fun () -> () }
+
+                let bool =
+                    {
+                        Encode = JSON.Bool
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String "" | JSON.Number "0" | JSON.Null | JSON.Bool false -> false
+                            | JSON.String _ | JSON.Number "1" | JSON.Bool true -> true
+                            | _ -> Error.expectedBool json
+                        Default = fun () -> false
+                    }
+
+                let char =
+                    {
+                        Encode = string >> JSON.String
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String s when s.Length > 0 -> s.[0]
+                            | _ -> Error.generic json "Expected a nonempty JSON string"
+                        Default = fun () -> ' '
+                    }
+
+                let string =
+                    {
+                        Encode = fun (s: string) ->
+                            match s with
+                            | null -> JSON.Null
+                            | _ -> JSON.String s
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String s -> s
+                            | JSON.Null -> null
+                            | _ -> Error.expectedStr json
+                        Default = fun () -> null
+                    }
+                let stringNoNull =
+                    {
+                        Encode = fun (s: string) ->
+                            match s with
+                            | null -> invalidArg "s" "Cannot serialize a null string"
+                            | _ -> JSON.String s
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String s -> s
+                            | _ -> Error.expectedStr json
+                        Default = fun () -> ""
+                    }
+
+                let timespan = Codec.map (fun (ts: TimeSpan) -> ts.Ticks) TimeSpan.FromTicks int64
+
+                let datetime =
+                    {
+                        Encode = fun (dt: DateTime) ->
+                            dt.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String s ->
+                                Error.wrap json "Could not parse DateTime"
+                                    (fun s ->
+                                        DateTime.ParseExact(
+                                            s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |],
+                                            CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)) s
+                            | _ -> Error.expectedStr json
+                        Default = fun () -> DateTime.MinValue
+                    }
+
+                let datetimeoffset =
+                    {
+                        Encode = fun (dto: DateTimeOffset) ->
+                            dto.ToString("o", CultureInfo.InvariantCulture) |> JSON.String
+                        Decode = fun _ json ->
+                            match json with
+                            | JSON.String s -> 
+                                Error.wrap json "Could not parse DateTimeOffset"
+                                    (fun s ->
+                                        DateTimeOffset.ParseExact(
+                                            s, [| "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'"; "o"; "r" |],
+                                            CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)) s
+                            | _ -> Error.expectedStr json
+                        Default = fun () -> DateTimeOffset.MinValue
+                    }
+
+            let rec getCodec<'T> (cache: TypeGenerationContext, rules: JsonSettings) : JsonCodec<'T> =
+                let delay (c: Cell<JsonCodec<'T>>) : JsonCodec<'T> =
+                    { Encode = (fun o -> c.Value.Encode o); Decode = (fun o json -> c.Value.Decode o json); Default = (fun () -> c.Value.Default()) }
+                (fun () ->
+                    match cache.InitOrGetCachedValue<JsonCodec<'T>> delay with
+                    Cached(value = f) -> f | NotCached t -> let p = genCodec(cache, rules) in cache.Commit t p)
+                |> lock cache
+
+            and genCodec (cache: TypeGenerationContext, rules) : JsonCodec<'T> =
+                match shapeof<'T> with
+                | Shape.Unit -> Helpers.cast Primitives.unit
+                | Shape.Bool -> Helpers.cast Primitives.bool
+                | Shape.Byte -> Helpers.cast Primitives.uint8
+                | Shape.SByte -> Helpers.cast Primitives.int8
+                | Shape.Int16 -> Helpers.cast Primitives.int16
+                | Shape.UInt16 -> Helpers.cast Primitives.uint16
+                | Shape.Int32 -> Helpers.cast Primitives.int32
+                | Shape.UInt32 -> Helpers.cast Primitives.uint32
+                | Shape.Int64 -> Helpers.cast Primitives.int64
+                | Shape.UInt64 -> Helpers.cast Primitives.uint64
+                | Shape.BigInt -> Helpers.cast Primitives.bigint
+                | Shape.Single -> Helpers.cast Primitives.single
+                | Shape.Double -> Helpers.cast Primitives.double
+                | Shape.Decimal -> Helpers.cast Primitives.decimal
+                | Shape.Char -> Helpers.cast Primitives.char
+                | Shape.String -> Helpers.cast (if rules.AllowNullStrings then Primitives.string else Primitives.stringNoNull)
+                | Shape.TimeSpan -> Helpers.cast Primitives.timespan
+                | Shape.DateTime -> Helpers.cast Primitives.datetime
+                | Shape.DateTimeOffset -> Helpers.cast Primitives.datetimeoffset
+                | Shape.FSharpOption s -> option (cache, rules) s
+                | Shape.Enum s -> enum (cache, rules) s
+                | Shape.Tuple (:? ShapeTuple<'T> as shape) -> tuple (cache, rules) shape
+                | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) -> union (cache, rules) shape
+                | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) -> record (cache, rules) shape
+                | _ -> failwithf "The type '%O' is unsupported; Create a custom rule to implement your own behaviour" typeof<'T>
+
+            // todo: special cases for bool option and string option
+            and private option (cache, rules) (s: IShapeFSharpOption) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        let tP = getCodec(cache, rules)
+                        {
+                            Encode = function Some v -> tP.Encode v | None -> JSON.Null
+                            Decode = fun _ json ->
+                                match json with
+                                | JSON.Null -> None
+                                | _ -> tP.Decode Unchecked.defaultof<'t> json |> Some
+                            Default = fun () -> None
+                        } |> Helpers.cast
+                } |> s.Element.Accept
+
+            and private enum (cache, rules) (s: IShapeEnum) =
+                { new IEnumVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t, 'u when 't : enum<'u> and 't : struct and 't :> ValueType and 't : (new : unit -> 't)>() =
+                        getCodec(cache, rules)
+                        |> Codec.map LanguagePrimitives.EnumToValue LanguagePrimitives.EnumOfValue<'u, 't>
+                        |> Helpers.cast
+                } |> s.Accept
+
+            // helper function for members of objects
+            and private elem (cache, rules) (field: IShapeMember<'Class>) =
+                { new IMemberVisitor<'Class, _> with
+                    member _.Visit (shape: ShapeMember<'Class, _>) =
+                        let tP = getCodec(cache, rules)
+                        {
+                            Encode = fun o -> tP.Encode(shape.Get o)
+                            Decode = fun o json -> shape.Set o (tP.Decode (shape.Get o) json)
+                            Default = fun () -> tP.Default() :> obj
+                        } : JsonPartialCodec<'Class, _>
+                } |> field.Accept
+
+            and private tuple (cache, rules) (shape: ShapeTuple<'T>) =
+                let codecs = shape.Elements |> Array.map (fun e -> (elem (cache, rules) e, e.Label))
+                {
+                    Encode = fun o -> codecs |> Array.map (fun (codec, _) -> codec.Encode o) |> List.ofArray |> JSON.Array
+                    Decode = fun o json ->
+                        match json with
+                        | JSON.Array xs when List.length xs = shape.Elements.Length ->
+                            Array.ofList xs
+                            |> Array.zip codecs
+                            |> Array.iter (fun ((codec, _), json) -> codec.Decode o json |> ignore)
+                            o
+                        | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" shape.Elements.Length)
+                        | _ -> Error.expectedArr json
+                    Default =
+                        let typ = typeof<'T>
+                        fun () ->
+                            Array.map (fun ((codec: JsonPartialCodec<'T, obj>), _) -> codec.Default()) codecs
+                            |> fun os -> FSharpValue.MakeTuple(os, typ) :?> 'T
+                }
+
+            and private union (cache, rules) (shape: ShapeFSharpUnion<'T>) =
+                let case (case: ShapeFSharpUnionCase<'Class>) =
+                    let codecs = case.Fields |> Array.map (elem (cache, rules))
+                    match case.Arity with
+                    | 0 ->
+                        {
+                            // encode is never called, string is used to encode 0-arity union cases
+                            Encode = fun _ -> JSON.Null
+                            Decode = fun o _ -> o
+                            Default = case.CreateUninitialized
+                        }
+                    | 1 ->
+                        {
+                            Encode = fun case -> codecs.[0].Encode case
+                            Decode = fun o json -> codecs.[0].Decode o json
+                            Default = fun () ->
+                                FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].Default()|]) :?> 'Class
+                        }
+                    | n ->
+                        {
+                            Encode = fun case -> Array.map (fun (codec: JsonPartialCodec<'Class, obj>) -> codec.Encode case) codecs |> List.ofArray |> JSON.Array
+                            Decode = fun o json ->
+                                match json with
+                                | JSON.Array xs when xs.Length = n ->
+                                    Array.ofList xs
+                                    |> Array.zip codecs
+                                    |> Array.iter (fun (codec, json) -> codec.Decode o json |> ignore)
+                                    o
+                                | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" n)
+                                // maybe in future, support object with named members of union?
+                                | _ -> Error.expectedArr json
+                            Default = fun () ->
+                                let os = Array.map (fun (codec: JsonPartialCodec<'Class, obj>) -> codec.Default()) codecs
+                                FSharpValue.MakeUnion(case.CaseInfo, os) :?> 'Class
+                        }
+                let codecs = shape.UnionCases |> Array.map (fun c -> (case c, c.Arity))
+                {
+                    Encode = fun (o: 'T) ->
+                        let caseId = shape.GetTag o
+                        let case = shape.UnionCases.[caseId].CaseInfo
+                        let (codec, arity) = codecs.[caseId]
+                        if arity = 0 then JSON.String case.Name
+                        else [(case.Name, codec.Encode o)] |> Map.ofList |> JSON.Object
+                    Decode = fun _ json ->
+                        match json with
+                        | JSON.String s ->
+                            let caseId = try shape.GetTag s with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
+                            let (codec, arity) = codecs.[caseId]
+                            codec.Decode (codec.Default()) JSON.Null // will throw a sensible error for non-0-arity cases, and work for 0-arity cases
+                        | JSON.Object m ->
+                            let caseName, innerJson =
+                                if m.IsEmpty then Error.generic json "Expected a nonempty JSON object"
+                                else Map.toList m |> List.head
+                            let caseId = try shape.GetTag caseName with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
+                            let (codec, _) = codecs.[caseId]
+                            codec.Decode (codec.Default()) innerJson
+                        | _ -> Error.expectedObj json
+                    Default = fun () -> Unchecked.defaultof<'T> // this never gets used
+                }
+
+            and private record (cache, rules) (shape: ShapeFSharpRecord<'T>) =
+                let codecs = shape.Fields |> Array.map (fun f -> (elem (cache, rules) f, f.Label))
+                {
+                    Encode = fun (o: 'T) ->
+                        Array.fold
+                            (fun map ((codec: JsonPartialCodec<'T, obj>), name) -> Map.add name (codec.Encode o) map)
+                            Map.empty codecs
+                        |> JSON.Object
+                    Decode = fun (o: 'T) json ->
+                        match json with
+                        | JSON.Object map ->
+                            Array.iter
+                                ( fun ((codec: JsonPartialCodec<'T, obj>), name) ->
+                                    if Map.containsKey name map then
+                                        codec.Decode o map.[name] |> ignore
+                                    // else fail if required
+                                ) codecs; o
+                        | _ -> Error.expectedObj json
+                    Default =
+                        // allow for Default instance check here
+                        let typ = typeof<'T>
+                        fun () ->
+                            Array.map (fun ((codec: JsonPartialCodec<'T, obj>), _) -> codec.Default()) codecs
+                            |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
+                }
+
+    open System.IO
+    open FParsec
+    open TypeShape.Core.Utils
+    open Json
+
+    type JsonEncoder(settings: JsonSettings) =
+
+        let cache = new TypeGenerationContext()
+
+        new() = JsonEncoder(JsonSettings.Default)
+
+        member this.ToJson (obj: 'T) = Mapping.getCodec(cache, settings).Encode obj
+
+        member this.ToString (obj: 'T) = obj |> this.ToJson |> Formatting.formatJson
+
+        member this.ToStream (stream: Stream) (obj: 'T) =
+            use w = new StreamWriter(stream)
+            obj |> this.ToJson |> Formatting.formatJson |> w.Write
+
+        member this.ToFile (path, overwrite) (obj: 'T) =
+            if overwrite || (File.Exists path |> not) then
+                File.WriteAllText(path, this.ToString obj)
+
+        member this.FromJson<'T> (json: JSON) : JsonResult<'T> = 
+            let codec = Mapping.getCodec(cache, settings)
+            codec.DecodeNonThrowing (codec.Default()) json
+        
+        member this.FromString<'T> (str: string) : JsonResult<'T> =
+            match Parsing.parseString str with
+            | ParserResult.Success (res, _, _) -> Result.Ok res
+            | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception)
+            |> Result.bind this.FromJson<'T>
+
+        member this.FromStream<'T> (nameOfStream, stream) =
+            match Parsing.parseStream nameOfStream stream with
+            | ParserResult.Success (res, _, _) -> Result.Ok res
+            | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception)
+            |> Result.bind this.FromJson<'T>
+
+        member this.FromFile<'T> (path: string) =
+            match Parsing.parseFile path with
+            | ParserResult.Success (res, _, _) -> Result.Ok res
+            | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception)
+            |> Result.bind this.FromJson<'T>
