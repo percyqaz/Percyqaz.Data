@@ -1,6 +1,6 @@
 ﻿namespace Percyqaz
 
-module Json =
+module Json_ =
 
     open System
     open System.Globalization

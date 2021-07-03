@@ -5,13 +5,17 @@ open System.Collections.Generic
 open Percyqaz.Json
 open NUnit.Framework
 
+
+let Json = new JsonEncoder()
+
+(*
 [<SetUp>]
 let Setup () =
     Json.Mapping.Rules.addTypeRuleWithDefault<int * int>
         (fun (x, y) -> JSON.Null)
         (fun (x, y) json -> JsonMapResult.Success(7, y))
         (0, 9)
-    Json.Mapping.Rules.addPicklerRule()
+    Json.Mapping.Rules.addPicklerRule() *)
 
 type Tuple = string * int
 
@@ -60,17 +64,17 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
         | :? POCO<'T> as other -> other.Value = this.Value && other.DefaultValue = this.DefaultValue
         | _ -> false
     override this.GetHashCode() = 0 //shuts up compiler :)
-    static member Pickler: Json.Mapping.JsonPickler<POCO<'T>> =
+    (*static member Pickler: Json.Mapping.JsonPickler<POCO<'T>> =
         let tP = Json.Mapping.getPickler<'T>()
         Json.Mapping.mkPickler
             (fun (o: POCO<'T>) -> tP.Encode(o.Value))
-            (fun (o: POCO<'T>) json -> tP.Decode(o.DefaultValue)(json) |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
+            (fun (o: POCO<'T>) json -> tP.Decode(o.DefaultValue)(json) |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))*)
 
 //Json.Mapping.Rules.addTypeRule<POCO<'T>>
     //(fun (o: POCO<'T>) -> Json.Mapping.getPickler<'T>().Encode(o.Value))
     //(fun (o: POCO<'T>) json -> Json.Mapping.getPickler<'T>().Decode o.DefaultValue json |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
 
-type [<Json.AllRequired>] ComplexRecord = {
+type ComplexRecord = {
     union: Union<int>
     stunion: StructUnion
     enum: Enum
@@ -91,11 +95,16 @@ and ComplexRecordToo = {
 
 type POCOExtension(a, b) =
     inherit POCO<int>(a, b)
-    static member Pickler = POCO<int>.Pickler
+    //static member Pickler = POCO<int>.Pickler
 
-let ExpectFailure = function JsonMapResult.Success _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
-let ExpectSuccess = function JsonMapResult.Failure v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
-let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.toString |> (fun j -> printfn "%s" j; j) |> Json.fromString<'T> |> JsonResult.value)
+let getOrThrow (res: JsonResult<'t>) =
+    match res with
+    | Ok r -> r
+    | Error e -> raise e
+
+let ExpectFailure = function JsonResult.Ok _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
+let ExpectSuccess = function JsonResult.Error v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
+let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.ToString |> (fun j -> printfn "%s" j; j) |> Json.FromString<'T> |> getOrThrow)
 
 let [<Test>] CustomRuleRoundTrip() = (7, 9) |> RoundTrip
 let [<Test>] PrimitiveRoundTrip() = PrimitiveRecord.Default |> RoundTrip
@@ -108,13 +117,13 @@ let [<Test>] EnumRoundTrip() = [Enum.A; Enum.C; Enum.B ||| Enum.A; Enum.A &&& En
 let [<Test>] ComplexRecordRoundTrip() = { union = Union<_>.CaseOne ""; stunion = CaseTwo; enum = Enum.A; stuple = struct (1,2,Int32.MinValue); tuple = ("", 0); prim = PrimitiveRecord.Default; too = ComplexRecordToo.Default } |> RoundTrip
 let [<Test>] MapRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> RoundTrip
 //these are tested separately to round trip code as they don't have structural equality
-let [<Test>] GenericListRoundTrip() = let list = ResizeArray([3;2;1]) in Assert.AreEqual(List.ofSeq list, list |> Json.toJson |> Json.fromJson<ResizeArray<int>> |> ExpectSuccess |> JsonMapResult.value |> List.ofSeq)
+let [<Test>] GenericListRoundTrip() = let list = ResizeArray([3;2;1]) in Assert.AreEqual(List.ofSeq list, list |> Json.ToJson |> Json.FromJson<ResizeArray<int>> |> ExpectSuccess |> getOrThrow |> List.ofSeq)
 let [<Test>] GenericDictRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> Dictionary |> RoundTrip
-let [<Test>] DefaultValueTest() = Assert.AreEqual(ComplexRecordToo.Default, Json.fromString<ComplexRecordToo>("{}") |> JsonResult.value)
-let [<Test>] JsonTest() =let j = PrimitiveRecord.Default |> Json.toJson in Assert.AreEqual(j, Json.toJson(j)); Assert.AreEqual(j, Json.fromJson<JSON>(j) |> JsonMapResult.value)
+let [<Test>] DefaultValueTest() = Assert.AreEqual(ComplexRecordToo.Default, Json.FromString<ComplexRecordToo>("{}") |> getOrThrow)
+let [<Test>] JsonTest() = let j = PrimitiveRecord.Default |> Json.ToJson in Assert.AreEqual(j, Json.ToJson j); Assert.AreEqual(j, Json.FromJson<JSON>(j) |> getOrThrow)
 
-let [<Test>] FileExist() = Json.fromFile<string>("doesntexist") |> ignore; Assert.Pass() //returns a failure instead of throwing an exception
-let [<Test>] Primitive1000() = for i = 0 to 1000 do PrimitiveRecord.Default |> Json.toJson |> Json.fromJson<PrimitiveRecord> |> ignore
+let [<Test>] FileExist() = Json.FromFile<string>("doesntexist") |> ignore; Assert.Pass() //returns a failure instead of throwing an exception
+let [<Test>] Primitive1000() = for i = 0 to 1000 do PrimitiveRecord.Default |> Json.ToJson |> Json.FromJson<PrimitiveRecord> |> ignore
 
 //Todo:
 //Tests for pickler-creation-time checks like attributes being present
