@@ -3,6 +3,7 @@ module Percyqaz.Json.Tests
 open System
 open System.Collections.Generic
 open Percyqaz.Json
+open Percyqaz.Json.Json
 open NUnit.Framework
 
 
@@ -35,25 +36,27 @@ type [<Struct>] StructUnion =
 | CaseOne of Tuple
 | CaseTwo
 
-type PrimitiveRecord = {
-    int: int
-    long: int64
-    single: single
-    bool: bool
-    float: float
-    string: string
-    byte: byte
-    time: DateTime
-    time2: DateTimeOffset
-    time3: TimeSpan
-} with
+type PrimitiveRecord =
+    {
+        int: int
+        long: int64
+        single: single
+        bool: bool
+        float: float
+        string: string
+        byte: byte
+        time: DateTime
+        time2: DateTimeOffset
+        time3: TimeSpan
+    }
     static member Default = { int = 2; long = -2177777288888L; single = 0.5f; bool = true; float = -3.14159265358979; string = "Hello world"; byte = 127uy; time = DateTime.Now; time2 = DateTimeOffset.MaxValue; time3 = DateTime.Now.TimeOfDay }
 
-type [<Struct>] StructRecord = {
-    one: int list
-    two: int option
-    three: int array
-} with
+type [<Struct>] StructRecord =
+    {
+        one: int list
+        two: int option
+        three: int array
+    }
     static member Default = { one = [1;2;3]; two = Some 7; three = [|3;2;1|] }
 
 type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
@@ -64,33 +67,33 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
         | :? POCO<'T> as other -> other.Value = this.Value && other.DefaultValue = this.DefaultValue
         | _ -> false
     override this.GetHashCode() = 0 //shuts up compiler :)
-    (*static member Pickler: Json.Mapping.JsonPickler<POCO<'T>> =
-        let tP = Json.Mapping.getPickler<'T>()
-        Json.Mapping.mkPickler
-            (fun (o: POCO<'T>) -> tP.Encode(o.Value))
-            (fun (o: POCO<'T>) json -> tP.Decode(o.DefaultValue)(json) |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))*)
+    static member JsonCodec(cache, settings, rules): Json.Mapping.JsonCodec<POCO<'T>> =
+        let tP = Mapping.getCodec<'T>(cache, settings, rules)
+        {
+            Encode = fun (o: POCO<'T>) -> tP.Encode o.Value
+            Decode = fun (instance: POCO<'T>) json -> POCO(instance.DefaultValue, tP.Decode instance.Value json)
+            Default = fun _ -> let d = tP.Default() in POCO(d, d)
+        }
 
-//Json.Mapping.Rules.addTypeRule<POCO<'T>>
-    //(fun (o: POCO<'T>) -> Json.Mapping.getPickler<'T>().Encode(o.Value))
-    //(fun (o: POCO<'T>) json -> Json.Mapping.getPickler<'T>().Decode o.DefaultValue json |> JsonMapResult.map (fun v -> POCO(o.DefaultValue, v)))
-
-type ComplexRecord = {
-    union: Union<int>
-    stunion: StructUnion
-    enum: Enum
-    stuple: StructTuple
-    tuple: Tuple
-    prim: PrimitiveRecord
-    too: ComplexRecordToo
-}
-and ComplexRecordToo = {
-    record: ComplexRecord option
-    arr: string array
-    map: Map<string, int>
-    list: Tuple list
-    poco: POCO<float>
-    anonymous: {|string: string; int: int|}
-} with
+type ComplexRecord =
+    {
+        union: Union<int>
+        stunion: StructUnion
+        enum: Enum
+        stuple: StructTuple
+        tuple: Tuple
+        prim: PrimitiveRecord
+        too: ComplexRecordToo
+    }
+and ComplexRecordToo =
+    {
+        record: ComplexRecord option
+        arr: string array
+        map: Map<string, int>
+        list: Tuple list
+        poco: POCO<float>
+        anonymous: {|string: string; int: int|}
+    }
     static member Default = { record = None; arr = [|"Hello"; "World"|]; map = Map.ofList[("",1);("a",2)]; list = [("", 0)]; poco = POCO(5.0, 10.0); anonymous = {|string = ""; int = 0|} } 
 
 type POCOExtension(a, b) =
