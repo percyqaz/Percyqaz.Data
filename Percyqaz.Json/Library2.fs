@@ -551,7 +551,10 @@ module Json =
                             let (codec, _) = codecs.[caseId]
                             codec.DecodeWithDefault innerJson
                         | _ -> Error.expectedObj json
-                    Default = fun () -> Unchecked.defaultof<'T> // this never gets used
+                    Default =
+                        // this is unused in most cases but needs to be well-formed as it can end up consumed by regular F# code
+                        let value = (fst codecs.[0]).Default()
+                        fun () -> value
                 }
 
             and private record (cache, settings, rules) (shape: ShapeFSharpRecord<'T>) =
@@ -746,3 +749,5 @@ module Json =
                 | ParserResult.Success (res, _, _) -> Result.Ok res
                 | ParserResult.Failure (_, err, _) -> Result.Error (ParseFailure(err) :> Exception))
             |> Result.bind this.FromJson<'T>
+
+        member this.Default<'T>() : 'T = Mapping.getCodec(cache, settings, rules).Default()
