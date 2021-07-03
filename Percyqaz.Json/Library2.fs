@@ -553,11 +553,22 @@ module Json =
                 }
 
             and private record (cache, settings, rules) (shape: ShapeFSharpRecord<'T>) =
-                let codecs = shape.Fields |> Array.map (fun f -> (elem (cache, settings, rules) f, f.Label))
+                let codecs = shape.Fields |> Array.map (fun f -> (elem (cache, settings, rules) f, f))
+                
+                let requireAll, defaultCtor =
+                    let typ = typeof<'T>
+                    let mi = typ.GetProperty("Default", typeof<'T>)
+                    if isNull mi then true, fun () ->
+                        Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
+                        |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
+                    else false, fun () -> mi.GetValue(null) :?> 'T
+
+                let codecs = Array.map (fun (codec, f: IShapeMember<'T>) -> (codec, f.Label, requireAll || f.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0)) codecs
+
                 {
                     Encode = fun (o: 'T) ->
                         Array.fold
-                            (fun map (codec, name) -> Map.add name (codec.EncodeMember o) map)
+                            (fun map (codec, name, _) -> Map.add name (codec.EncodeMember o) map)
                             Map.empty codecs
                         |> JSON.Object
                     Decode = fun (o: 'T) json ->
@@ -565,20 +576,14 @@ module Json =
                         | JSON.Object map ->
                             
                             let mutable o = o
-                            for (codec, name) in codecs do
+                            for (codec, name, required) in codecs do
                                 if Map.containsKey name map then
-                                    o <- codec.DecodeMember o map.[name]
+                                    o <- try codec.DecodeMember o map.[name] with :? MapFailure -> if required then reraise() else o
+                                else if required then Error.generic json (sprintf "Required field '%s' was not provided" name)
                                 // else fail if required
                             o
                         | _ -> Error.expectedObj json
-                    Default =
-                        let typ = typeof<'T>
-                        let mi = typ.GetProperty("Default", typeof<'T>)
-                        if isNull mi then fun () ->
-                            Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
-                            |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
-                            |> IDPRINT
-                        else fun () -> mi.GetValue(null) :?> 'T
+                    Default = defaultCtor
                 }
 
             and private dict (cache, settings, rules) (s: IShapeDictionary) =
