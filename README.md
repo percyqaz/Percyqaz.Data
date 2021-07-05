@@ -2,7 +2,7 @@
 
 Yet another JSON library, specificially for my F# JSON needs which were not met by JSON.Net or Chiron
 
-## How it works (the short version)
+## How it works (briefly)
 **JSON text**
 
 ↕ parsed (using FParsec)
@@ -12,8 +12,6 @@ Yet another JSON library, specificially for my F# JSON needs which were not met 
 ↕ mapped (using codecs)
 
 **Your F# types**
-
----
 
 ## Key design principles
 
