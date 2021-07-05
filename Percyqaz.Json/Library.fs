@@ -35,6 +35,9 @@ module Json =
 
                 AllowNullStrings = false
                 AllowNullArrays = false
+                //Allow NaN in floats
+                //Allow +-Infinity in floats
+                //All dicts and maps should be [(Key, Value)] format instead of object
             }
 
     let IDPRINT x = printfn "%A" x; x
@@ -258,6 +261,18 @@ module Json =
                         Default = fun () -> Unchecked.defaultof<'T>
                     }
 
+                let numericFloatCodec (useString: 'T -> bool) (enc: 'T -> string) (dec: (string * IFormatProvider) -> 'T) =
+                    {
+                        Encode = fun f -> if useString f then JSON.String (enc f) else JSON.Number (enc f)
+                        Decode =
+                            fun _ json ->
+                                match json with
+                                | JSON.String s
+                                | JSON.Number s -> Error.wrap json "Could not parse number" dec (s, CultureInfo.InvariantCulture)
+                                | _ -> Error.expectedNum json
+                        Default = fun () -> Unchecked.defaultof<'T>
+                    }
+
             module Rules =
                 
                 let customCodecMethod =
@@ -287,8 +302,8 @@ module Json =
                 let uint64 = Helpers.numericCodec (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) UInt64.Parse
                 let int64 = Helpers.numericCodec (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) Int64.Parse
                 let bigint = Helpers.numericCodec (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) Numerics.BigInteger.Parse
-                let single = Helpers.numericCodec (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) Single.Parse
-                let double = Helpers.numericCodec (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) Double.Parse
+                let single = Helpers.numericFloatCodec (fun (f: single) -> Single.IsInfinity f || Single.IsNaN f) (fun (f: single) -> f.ToString("R", CultureInfo.InvariantCulture)) Single.Parse
+                let double = Helpers.numericFloatCodec (fun (f: double) -> Double.IsInfinity f || Double.IsNaN f) (fun (f: double) -> f.ToString("G17", CultureInfo.InvariantCulture)) Double.Parse
                 let decimal = Helpers.numericCodec (fun (f: decimal) -> f.ToString CultureInfo.InvariantCulture) Decimal.Parse
 
                 let unit = { Encode = (fun _ -> JSON.Null); Decode = (fun _ _ -> ()); Default = fun () -> () }
@@ -331,7 +346,7 @@ module Json =
                     {
                         Encode = fun (s: string) ->
                             match s with
-                            | null -> invalidArg "s" "Cannot serialize a null string"
+                            | null -> nullArg "s"
                             | _ -> JSON.String s
                         Decode = fun _ json ->
                             match json with
@@ -423,9 +438,6 @@ module Json =
 
                 | Shape.FSharpOption s -> option (cache, settings, rules) s
                 | Shape.Tuple (:? ShapeTuple<'T> as shape) -> tuple (cache, settings, rules) shape
-                | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
-                    if typeof<'T> = typeof<JSON> then Helpers.cast Primitives.json
-                    else union (cache, settings, rules) shape
                 | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) -> record (cache, settings, rules) shape
                 | Shape.Dictionary s -> dict (cache, settings, rules) s
                 | Shape.FSharpMap s -> map (cache, settings, rules) s
@@ -433,6 +445,9 @@ module Json =
                 | Shape.Array s when s.Rank = 1 -> array (cache, settings, rules) s
                 | Shape.FSharpList s -> fsharplist (cache, settings, rules) s
                 | Shape.ResizeArray s -> csharplist (cache, settings, rules) s
+                | Shape.FSharpUnion (:? ShapeFSharpUnion<'T> as shape) ->
+                    if typeof<'T> = typeof<JSON> then Helpers.cast Primitives.json
+                    else union (cache, settings, rules) shape
                 | _ -> failwithf "The type '%O' is unsupported; Create a custom rule to implement your own behaviour" typeof<'T>
 
             and private enum (cache, settings, rules) (s: IShapeEnum) =
@@ -489,69 +504,6 @@ module Json =
                         fun () ->
                             Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
                             |> fun os -> FSharpValue.MakeTuple(os, typ) :?> 'T
-                }
-
-            and private union (cache, settings, rules) (shape: ShapeFSharpUnion<'T>) =
-                let case (case: ShapeFSharpUnionCase<'Class>) =
-                    let codecs = case.Fields |> Array.map (elem (cache, settings, rules))
-                    match case.Arity with
-                    | 0 ->
-                        {
-                            // encode is never called, string is used to encode 0-arity union cases
-                            Encode = fun _ -> JSON.Null
-                            Decode = fun o _ -> o
-                            Default = case.CreateUninitialized
-                        }
-                    | 1 ->
-                        {
-                            Encode = fun case -> codecs.[0].EncodeMember case
-                            Decode = fun o json -> codecs.[0].DecodeMember o json
-                            Default = fun () ->
-                                FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].DefaultMember()|]) :?> 'Class
-                        }
-                    | n ->
-                        {
-                            Encode = fun case -> Array.map (fun codec-> codec.EncodeMember case) codecs |> List.ofArray |> JSON.Array
-                            Decode = fun o json ->
-                                match json with
-                                | JSON.Array xs when xs.Length = n ->
-                                    let mutable o = o
-                                    for (codec, json) in Array.ofList xs |> Array.zip codecs do
-                                        o <- codec.DecodeMember o json
-                                    o
-                                | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" n)
-                                // maybe in future, support object with named members of union?
-                                | _ -> Error.expectedArr json
-                            Default = fun () ->
-                                let os = Array.map (fun codec -> codec.DefaultMember()) codecs
-                                FSharpValue.MakeUnion(case.CaseInfo, os) :?> 'Class
-                        }
-                let codecs = shape.UnionCases |> Array.map (fun c -> (case c, c.Arity))
-                {
-                    Encode = fun (o: 'T) ->
-                        let caseId = shape.GetTag o
-                        let case = shape.UnionCases.[caseId].CaseInfo
-                        let (codec, arity) = codecs.[caseId]
-                        if arity = 0 then JSON.String case.Name
-                        else [(case.Name, codec.Encode o)] |> Map.ofList |> JSON.Object
-                    Decode = fun _ json ->
-                        match json with
-                        | JSON.String s ->
-                            let caseId = try shape.GetTag s with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
-                            let (codec, _) = codecs.[caseId]
-                            codec.DecodeWithDefault JSON.Null // will throw a sensible error for non-0-arity cases, and work for 0-arity cases
-                        | JSON.Object m ->
-                            let caseName, innerJson =
-                                if m.IsEmpty then Error.generic json "Expected a nonempty JSON object"
-                                else Map.toList m |> List.head
-                            let caseId = try shape.GetTag caseName with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
-                            let (codec, _) = codecs.[caseId]
-                            codec.DecodeWithDefault innerJson
-                        | _ -> Error.expectedObj json
-                    Default =
-                        // this is unused by Decode, but still might get consumed by regular F# code
-                        let value = (fst codecs.[0]).Default()
-                        fun () -> value
                 }
 
             and private record (cache, settings, rules) (shape: ShapeFSharpRecord<'T>) =
@@ -642,7 +594,11 @@ module Json =
                             |> Helpers.cast
                 } |> s.Accept
 
-            and private set (cache, settings, rules) (s: IShapeFSharpSet) = failwith "nyi"
+            and private set (cache, settings, rules) (s: IShapeFSharpSet) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        failwith "not yet implemented"
+                } |> s.Element.Accept
 
             and private array (cache, settings, rules) (s: IShapeArray) =
                 { new ITypeVisitor<JsonCodec<'T>> with
@@ -656,7 +612,7 @@ module Json =
                                     | xs -> Array.map tP.Encode xs |> List.ofArray |> JSON.Array
                                 else
                                     function
-                                    | null -> invalidArg "" "Cannot serialize a null array"
+                                    | null -> nullArg "arr"
                                     | xs -> Array.map tP.Encode xs |> List.ofArray |> JSON.Array
                             Decode = 
                                 if settings.AllowNullArrays then
@@ -701,6 +657,69 @@ module Json =
                             Default = fun () -> new ResizeArray<'t>()
                         } |> Helpers.cast
                 } |> s.Element.Accept
+
+            and private union (cache, settings, rules) (shape: ShapeFSharpUnion<'T>) =
+                let case (case: ShapeFSharpUnionCase<'Class>) =
+                    let codecs = case.Fields |> Array.map (elem (cache, settings, rules))
+                    match case.Arity with
+                    | 0 ->
+                        {
+                            // encode is never called, string is used to encode 0-arity union cases
+                            Encode = fun _ -> JSON.Null
+                            Decode = fun o _ -> o
+                            Default = case.CreateUninitialized
+                        }
+                    | 1 ->
+                        {
+                            Encode = fun case -> codecs.[0].EncodeMember case
+                            Decode = fun o json -> codecs.[0].DecodeMember o json
+                            Default = fun () ->
+                                FSharpValue.MakeUnion(case.CaseInfo, [|codecs.[0].DefaultMember()|]) :?> 'Class
+                        }
+                    | n ->
+                        {
+                            Encode = fun case -> Array.map (fun codec-> codec.EncodeMember case) codecs |> List.ofArray |> JSON.Array
+                            Decode = fun o json ->
+                                match json with
+                                | JSON.Array xs when xs.Length = n ->
+                                    let mutable o = o
+                                    for (codec, json) in Array.ofList xs |> Array.zip codecs do
+                                        o <- codec.DecodeMember o json
+                                    o
+                                | JSON.Array _ -> Error.generic json (sprintf "Expected %i items in JSON array" n)
+                                // maybe in future, support object with named members of union?
+                                | _ -> Error.expectedArr json
+                            Default = fun () ->
+                                let os = Array.map (fun codec -> codec.DefaultMember()) codecs
+                                FSharpValue.MakeUnion(case.CaseInfo, os) :?> 'Class
+                        }
+                let codecs = shape.UnionCases |> Array.map (fun c -> (case c, c.Arity))
+                {
+                    Encode = fun (o: 'T) ->
+                        let caseId = shape.GetTag o
+                        let case = shape.UnionCases.[caseId].CaseInfo
+                        let (codec, arity) = codecs.[caseId]
+                        if arity = 0 then JSON.String case.Name
+                        else [(case.Name, codec.Encode o)] |> Map.ofList |> JSON.Object
+                    Decode = fun _ json ->
+                        match json with
+                        | JSON.String s ->
+                            let caseId = try shape.GetTag s with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
+                            let (codec, _) = codecs.[caseId]
+                            codec.DecodeWithDefault JSON.Null // will throw a sensible error for non-0-arity cases, and work for 0-arity cases
+                        | JSON.Object m ->
+                            let caseName, innerJson =
+                                if m.IsEmpty then Error.generic json "Expected a nonempty JSON object"
+                                else Map.toList m |> List.head
+                            let caseId = try shape.GetTag caseName with :? System.Collections.Generic.KeyNotFoundException -> Error.generic json "Unexpected union tag"
+                            let (codec, _) = codecs.[caseId]
+                            codec.DecodeWithDefault innerJson
+                        | _ -> Error.expectedObj json
+                    Default =
+                        // this is unused by Decode, but still might get consumed by regular F# code
+                        let value = (fst codecs.[0]).Default()
+                        fun () -> value
+                }
 
     open System.IO
     open FParsec

@@ -1,4 +1,4 @@
-module Percyqaz.Json.Tests
+﻿module Percyqaz.Json.Tests
 
 open System
 open System.Collections.Generic
@@ -6,28 +6,58 @@ open Percyqaz.Json
 open Percyqaz.Json.Json
 open NUnit.Framework
 
+type Union =
+    | Nullary
+    | Unary of int
+    | Binary of Union * string
 
-let Json = new JsonEncoder({ JsonSettings.Default with FormatExpandObjects = false})
+[<Struct>]
+type StUnion =
+    | Nullary
+    | Unary of int
+    | Binary of byte * string
 
-type Tuple = string * int
+type GenericUnion<'T> =
+    | Nullary
+    | Unary of 'T
+    | Binary of GenericUnion<'T> * string
 
-type Union<'T> =
-    | CaseOne of string
-    | CaseTwo of label1: Union<'T> * label2: 'T
-    | CaseThree
+[<Struct>]
+type GenericStUnion<'T> =
+    | Nullary
+    | Unary of 'T
+    | Binary of byte * string
 
-type Enum =
-    | A = 1u
-    | B = 2u
-    | C = 4u
+type EnumInt8 =
+    | A = 1y
+    | B = 2y
+    | C = -4y
 
-type StructTuple = (struct (int * int * int))
+type EnumInt32 =
+    | A = 1
+    | B = 2
+    | C = -4
 
-type [<Struct>] StructUnion =
-    | CaseOne of Tuple
-    | CaseTwo
+type EnumInt64 =
+    | A = 1l
+    | B = 2l
+    | C = -4l
 
-type PrimitiveRecord =
+type SimpleRecord =
+    {
+        int: int
+        long: int64
+        single: single
+        bool: bool
+        float: float
+        string: string
+        byte: byte
+        time: DateTime
+        time2: DateTimeOffset
+        time3: TimeSpan
+    }
+
+type SimpleRecordWithDefault =
     {
         int: int
         long: int64
@@ -42,13 +72,36 @@ type PrimitiveRecord =
     }
     static member Default = { int = 2; long = -2177777288888L; single = 0.5f; bool = true; float = -3.14159265358979; string = "Hello world"; byte = 127uy; time = DateTime.Now; time2 = DateTimeOffset.MaxValue; time3 = DateTime.Now.TimeOfDay }
 
-type [<Struct>] StructRecord =
+[<Struct>]
+type SimpleStRecord =
     {
-        one: int list
-        two: int option
-        three: int array
+        int: int
+        long: int64
+        single: single
+        bool: bool
+        float: float
+        string: string
+        byte: byte
+        time: DateTime
+        time2: DateTimeOffset
+        time3: TimeSpan
     }
-    static member Default = { one = [1;2;3]; two = Some 7; three = [|3;2;1|] }
+
+[<Struct>]
+type SimpleStRecordWithDefault =
+    {
+        int: int
+        long: int64
+        single: single
+        bool: bool
+        float: float
+        string: string
+        byte: byte
+        time: DateTime
+        time2: DateTimeOffset
+        time3: TimeSpan
+    }
+    static member Default = { int = 2; long = -2177777288888L; single = 0.5f; bool = true; float = -3.14159265358979; string = "Hello world"; byte = 127uy; time = DateTime.Now; time2 = DateTimeOffset.MaxValue; time3 = DateTime.Now.TimeOfDay }
 
 type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
     member this.Value = value
@@ -68,60 +121,338 @@ type POCO<'T when 'T : equality>(defaultValue: 'T, value: 'T) =
 
 type ComplexRecord =
     {
-        union: Union<int>
-        stunion: StructUnion
-        enum: Enum
-        stuple: StructTuple
-        tuple: Tuple
-        prim: PrimitiveRecord
+        union: GenericUnion<int>
+        stunion: GenericStUnion<byte>
+        enum: EnumInt8
+        stuple: (struct (int * byte * bool))
+        tuple: (int * byte * bool)
+        record: SimpleRecord
+        strecord: SimpleStRecord
+        option: int option
         too: ComplexRecordToo
     }
 and ComplexRecordToo =
     {
-        record: ComplexRecord option
+        one: ComplexRecord option
         arr: string array
+        list: int list
         map: Map<string, int>
-        list: Tuple list
         poco: POCO<float>
         anonymous: {|string: string; int: int|}
     }
-    static member Default = { record = None; arr = [|"Hello"; "World"|]; map = Map.ofList[("",1);("a",2)]; list = [("", 0)]; poco = POCO(5.0, 10.0); anonymous = {|string = ""; int = 0|} } 
+    static member Default =
+        {
+            one = None
+            arr = [|"Hello"; "World"|]
+            map = Map.ofList [("", 1); ("a", 2)]
+            list = [0; 1]
+            poco = POCO(5.0, 10.0)
+            anonymous = {|string = ""; int = 0|}
+        } 
 
-let getOrThrow (res: JsonResult<'t>) =
+let expect (res: JsonResult<'t>) =
     match res with
     | Ok r -> r
     | Error e -> raise e
 
-let ExpectFailure = function JsonResult.Ok _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
-let ExpectSuccess = function JsonResult.Error v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
-let RoundTrip(x: 'T) = Assert.AreEqual(x, x |> Json.ToString |> (fun j -> printfn "%s" j; j) |> Json.FromString<'T> |> getOrThrow)
+//let ExpectFailure = function JsonResult.Ok _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
+//let ExpectSuccess = function JsonResult.Error v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
 
-let [<Test>] DefaultGenerationTest() =
-    let v = Json.Default<Union<int>>()
-    printfn "%A" v
-    Assert.Pass()
+let RoundTrip (json: JsonEncoder) (x: 'T) = Assert.AreEqual(x, x |> json.ToString |> (fun j -> printfn "%s" j; j) |> json.FromString<'T> |> expect)
+let RoundTripList (json: JsonEncoder) (xs: 'T list) = List.map (RoundTrip json) xs |> ignore
 
-let [<Test>] PrimitiveRoundTrip() = PrimitiveRecord.Default |> RoundTrip
-let [<Test>] StructRecordRoundTrip() = StructRecord.Default |> RoundTrip
-let [<Test>] OptionRoundTrip() = [Some 0; None] |> List.map RoundTrip |> ignore; Assert.Pass()
-let [<Test>] StTupleRoundTrip() = struct (5, "111", nanf) |> RoundTrip
-let [<Test>] UnionRoundTrip() = [Union<unit>.CaseOne "Hello"; Union<unit>.CaseTwo (Union<unit>.CaseOne "World", ()); Union<unit>.CaseThree] |> List.map RoundTrip |> ignore; Assert.Pass()
-let [<Test>] StUnionRoundTrip() = [CaseOne ("", 0); CaseTwo] |> List.map RoundTrip |> ignore; Assert.Pass()
-let [<Test>] Float32RoundTrip() = [Single.Epsilon; Single.NegativeInfinity; Single.MaxValue; Single.NaN; -2782346.348726f] |> List.map RoundTrip |> ignore; Assert.Pass()
-let [<Test>] EnumRoundTrip() = [Enum.A; Enum.C; Enum.B ||| Enum.A; Enum.A &&& Enum.C] |> List.map RoundTrip |> ignore; Assert.Pass()
-let [<Test>] ComplexRecordRoundTrip() = { union = Union<_>.CaseOne ""; stunion = CaseTwo; enum = Enum.A; stuple = struct (1,2,Int32.MinValue); tuple = ("", 0); prim = PrimitiveRecord.Default; too = ComplexRecordToo.Default } |> RoundTrip
-let [<Test>] MapRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> RoundTrip
-//these are tested separately to round trip code as they don't have structural equality
-let [<Test>] CSharpListRoundTrip() = let list = ResizeArray([3;2;1]) in Assert.AreEqual(List.ofSeq list, list |> Json.ToJson |> Json.FromJson<ResizeArray<int>> |> ExpectSuccess |> getOrThrow |> List.ofSeq)
-let [<Test>] CSharpDictRoundTrip() = [(1, ""); (3, "a"); (6, "e")] |> Map |> Dictionary |> RoundTrip
-let [<Test>] DefaultValuesAreUsed() = Assert.AreEqual(ComplexRecordToo.Default, Json.FromString<ComplexRecordToo>("{}") |> getOrThrow)
-let [<Test>] JsonRoundTrip() = let j = PrimitiveRecord.Default |> Json.ToJson in Assert.AreEqual(j, Json.ToJson j); Assert.AreEqual(j, Json.FromJson<JSON>(j) |> getOrThrow)
+[<TestFixture>]
+type ``1: Basic Round Trips``() =
+    
+    let Json = new JsonEncoder({ JsonSettings.Default with AllowNullStrings = false })
+    let JsonWithNullString = new JsonEncoder({ JsonSettings.Default with AllowNullStrings = true })
 
-let [<Test>] FileExist() = Json.FromFile<string>("doesntexist") |> ignore; Assert.Pass() //returns a failure instead of throwing an exception
-let [<Test>] Primitive1000() = for i = 0 to 1000 do PrimitiveRecord.Default |> Json.ToJson |> Json.FromJson<PrimitiveRecord> |> ignore
+    [<Test>]
+    member this.String_AllowNull() =
+        [""; "Hello"; "\n"; "§"; "\r\t\\😋"; null]
+        |> RoundTripList JsonWithNullString
+        Assert.Pass()
+    
+    [<Test>]
+    member this.String_DisallowNull() =
+        [""; "Hello"; "\n§\r\t\\😋"]
+        |> RoundTripList Json
+        Assert.Throws<ArgumentNullException> ( fun () -> (null: string) |> Json.ToJson |> ignore ) |> ignore
+        Assert.Throws<MapFailure> ( fun () -> Json.FromJson<string> JSON.Null |> expect |> ignore ) |> ignore
+        Assert.Pass()
 
-let [<Test>] ComplexRecordRoundTripCached() = ComplexRecordRoundTrip()
+    [<Test>]
+    member this.Integers() =
+        //8 bit
+        SByte.MaxValue |> RoundTrip Json
+        Byte.MaxValue |> RoundTrip Json
+        //16 bit
+        [19s; Int16.MaxValue] |> RoundTripList Json
+        UInt16.MaxValue |> RoundTrip Json
+        //32 bit
+        [5; Int32.MaxValue] |> RoundTripList Json
+        UInt32.MaxValue |> RoundTrip Json
+        //64 bit
+        [60L; Int64.MinValue] |> RoundTripList Json
+        UInt64.MaxValue |> RoundTrip Json
+        //big
+        [Numerics.BigInteger.One; -9999999999999999999999999999999999I] |> RoundTripList Json
+        Assert.Pass()
 
-//Todo:
-//Tests for pickler-creation-time checks like attributes being present
-//Benchmarks
+    [<Test>]
+    member this.FloatSingle() =
+        [2.6f; nanf; Single.Epsilon; Single.MinValue; Single.NegativeInfinity; Single.PositiveInfinity] |> RoundTripList Json
+        Assert.Pass()
+
+    [<Test>]
+    member this.FloatDouble() =
+        [2.6; Math.PI; nan; Double.Epsilon; Double.MaxValue; Double.NegativeInfinity; Double.PositiveInfinity] |> RoundTripList Json
+        Assert.Pass()
+
+    [<Test>]
+    member this.Primitives() =
+        () |> RoundTrip Json
+        [true; false] |> RoundTripList Json
+        [' '; '§'; '\n'; '\t'] |> RoundTripList Json
+        [Decimal.MinValue; Decimal.MaxValue; 0.69m] |> RoundTripList Json
+        Assert.Pass()
+
+    [<Test>]
+    member this.Times() =
+        [DateTime.Now; DateTime.MaxValue; DateTime.Today] |> RoundTripList Json
+        [DateTimeOffset.Now; DateTimeOffset.MaxValue; DateTimeOffset.MinValue] |> RoundTripList Json
+        [TimeSpan.MinValue; TimeSpan.MaxValue; TimeSpan.FromTicks(25565L)] |> RoundTripList Json
+        Assert.Pass()
+
+[<TestFixture>]
+type ``2: Round Trips``() =
+    
+    let Json = new JsonEncoder()
+
+    [<Test>]
+    member this.Unions() =
+        [ Union.Nullary; Union.Unary 6; Union.Binary (Union.Nullary, "zz") ]
+        |> RoundTripList Json
+        [ GenericUnion<string>.Nullary; GenericUnion<string>.Unary "Hello!"; GenericUnion<string>.Binary (GenericUnion<_>.Nullary, "zz") ]
+        |> RoundTripList Json
+    
+    [<Test>]
+    member this.StUnions() =
+        [ StUnion.Nullary; StUnion.Unary 6; StUnion.Binary (7uy, "zz") ]
+        |> RoundTripList Json
+        [ GenericStUnion<string>.Nullary; GenericStUnion<string>.Unary "Hello!"; GenericStUnion<string>.Binary (255uy, "zz") ]
+        |> RoundTripList Json
+
+    [<Test>]
+    member this.Enums() =
+        [ EnumInt8.A; EnumInt8.A ||| EnumInt8.C; EnumInt8.A &&& EnumInt8.B] |> RoundTripList Json
+        [ EnumInt32.A; EnumInt32.A ||| EnumInt32.C; enum -25; enum 600] |> RoundTripList Json
+        [ EnumInt64.A; EnumInt64.A ||| EnumInt64.B; enum Int32.MinValue; enum 600] |> RoundTripList Json
+
+    [<Test>]
+    member this.Tuples() =
+        (6, "Hello", Some 7uy) |> RoundTrip Json
+        struct (6, "Hello", Some 9us) |> RoundTrip Json
+
+    [<Test>]
+    member this.Options() =
+        [Some 5; None] |> RoundTripList Json
+        [ValueSome "Hello"; ValueNone] |> RoundTripList Json
+        Assert.Throws<ArgumentNullException> ( fun () -> (Some null: string option) |> RoundTrip Json ) |> ignore
+        Assert.Pass()
+
+    [<Test>]
+    member this.Arrays() =
+        [|1; 2; 3; 4; 5|] |> RoundTrip Json
+        ([||]: string array) |> RoundTrip Json
+        ([|[5]|]: int list array) |> RoundTrip Json
+
+    [<Test>]
+    member this.FSharpLists() =
+        [1; 2; 3; 4; 5] |> RoundTrip Json
+        ([]: string list) |> RoundTrip Json
+        ([[""]]: string list list ) |> RoundTrip Json
+    
+    [<Test>]
+    member this.CSharpLists() =
+        let original = ResizeArray([5; 4; 3; 2; 1])
+        let res =
+            original
+            |> Json.ToString
+            |> Json.FromString<ResizeArray<int>>
+            |> expect
+        // checking this equality verifies the round trip list has the same contents (it has a different identity so this deep clones the list)
+        Assert.AreEqual(List.ofSeq original, List.ofSeq res)
+
+    [<Test>]
+    member this.Maps() =
+        [
+            [(2, 1); (3, 1)] |> Map.ofList;
+            Map.empty
+        ] |> RoundTripList Json
+        [
+            [("", 1); ("", 1)] |> Map.ofList;
+            Map.empty
+        ] |> RoundTripList Json
+
+    [<Test>]
+    member this.CSharpDictionaries() =
+        Assert.Fail() //too lazy at this current time
+
+[<TestFixture>]
+type ``3: Json Formatting``() =
+    
+    let Json = new JsonEncoder()
+    let JsonEncodeMapsAsArr = new JsonEncoder() //setting nyi
+    
+    let isString = fun json -> printfn "%A" json; match json with JSON.String _ -> true | _ -> false
+    let isArr = fun json -> printfn "%A" json; match json with JSON.Array _ -> true | _ -> false
+    let isObj = fun json -> printfn "%A" json; match json with JSON.Object _ -> true | _ -> false
+    let isNull = fun json -> printfn "%A" json; match json with JSON.Null -> true | _ -> false
+
+    [<Test>]
+    member this.FloatSingle_Special_EncodeAsJStr() =
+        // ensure these special values are encoded as strings
+        // since just `NaN` or `-Infinity` as a literal is not in the JSON spec and may not be portable to other JSON parsers
+        [nanf; Single.NegativeInfinity; Single.PositiveInfinity]
+        |> List.forall (Json.ToJson >> isString)
+        |> Assert.That
+
+    [<Test>]
+    member this.FloatDouble_Special_EncodeAsJStr() =
+        [nan; Double.NegativeInfinity; Double.PositiveInfinity]
+        |> List.forall (Json.ToJson >> isString)
+        |> Assert.That
+
+    [<Test>]
+    member this.Lists_EncodeAsJArr() =
+        [1; 2; 3; 4; 5]
+        |> (Json.ToJson >> isArr)
+        |> Assert.That
+    
+    [<Test>]
+    member this.Arrays_EncodeAsJArr() =
+        [|1; 2; 3; 4; 5|]
+        |> (Json.ToJson >> isArr)
+        |> Assert.That
+        
+    [<Test>]
+    member this.Maps_StringKeys_EncodeAsJObj() =
+        [("A", 0); ("B", 2)]
+        |> Map.ofList
+        |> (Json.ToJson >> isObj)
+        |> Assert.That
+
+    [<Test>]
+    member this.Maps_StringKeys_SettingEncodeAsJArr() =
+        [("A", 0); ("B", 2)]
+        |> Map.ofList
+        |> (JsonEncodeMapsAsArr.ToJson >> isArr)
+        |> Assert.That
+    
+    [<Test>]
+    member this.Maps_NonStringKeys_EncodeAsJArr() =
+        [(2, 0); (1, 2)]
+        |> Map.ofList
+        |> (Json.ToJson >> isArr)
+        |> Assert.That
+
+    [<Test>]
+    member this.Union_NullaryCase_EncodeAsJStr() =
+        Union.Nullary
+        |> (Json.ToJson >> isString)
+        |> Assert.That
+        StUnion.Nullary
+        |> (Json.ToJson >> isString)
+        |> Assert.That
+    
+    [<Test>]
+    member this.Union_NonNullaryCase_EncodeAsJObj() =
+        Union.Unary 5
+        |> (Json.ToJson >> isObj)
+        |> Assert.That
+        Union.Binary (Union.Nullary, String.Empty)
+        |> (Json.ToJson >> isObj)
+        |> Assert.That
+        StUnion.Unary 5
+        |> (Json.ToJson >> isObj)
+        |> Assert.That
+
+    [<Test>]
+    member this.Option_EncodeFlat() =
+        Some "hello"
+        |> (Json.ToJson >> isString)
+        |> Assert.That
+        (None: int option)
+        |> (Json.ToJson >> isNull)
+        |> Assert.That
+
+    [<Test>]
+    member this.OptionValue_EncodeFlat() =
+        ValueSome "hello"
+        |> (Json.ToJson >> isString)
+        |> Assert.That
+        (ValueNone: int voption)
+        |> (Json.ToJson >> isNull)
+        |> Assert.That
+
+    [<Test>]
+    member this.Record_EncodeAsJObj() =
+        SimpleRecordWithDefault.Default
+        |> (Json.ToJson >> isObj)
+        |> Assert.That
+
+[<TestFixture>]
+type ``4: Text Formatting``() =
+    
+    let Json = new JsonEncoder()
+
+[<TestFixture>]
+type ``5: Performance``() =
+    
+    let Json = new JsonEncoder()
+
+    let simpleRecordInstance = Json.Default<SimpleRecord>()
+    let simpleStRecordInstance = Json.Default<SimpleStRecord>()
+    do
+        Json.Default<SimpleRecordWithDefault>() |> ignore
+        Json.Default<SimpleStRecordWithDefault>() |> ignore
+        Json.Default<ComplexRecord>() |> ignore
+        Json.Default<GenericUnion<int>>() |> ignore
+
+    let thousand (original: 'T) =
+        let mutable result = original
+        for i in 0 .. 999 do
+            result <- Json.ToJson result |> Json.FromJson<'T> |> expect
+        Assert.AreEqual(original, result)
+
+    [<Test>]
+    member this.SimpleRecord() =
+        simpleRecordInstance |> thousand
+
+    [<Test>]
+    member this.SimpleRecordWithDefault() =
+        SimpleRecordWithDefault.Default |> thousand
+
+    [<Test>]
+    member this.ComplexRecord() =
+        {
+            union = GenericUnion<int>.Unary 8
+            stunion = GenericStUnion<byte>.Nullary
+            enum = EnumInt8.C
+            stuple = struct (5, 7uy, true)
+            tuple = (-5, 27uy, false)
+            record = simpleRecordInstance
+            strecord = simpleStRecordInstance
+            option = None
+            too = ComplexRecordToo.Default
+        } |> thousand
+
+    [<Test>]
+    member this.Int32() =
+        9 |> thousand
+    
+    [<Test>]
+    member this.Float64() =
+        Math.PI |> thousand
+        
