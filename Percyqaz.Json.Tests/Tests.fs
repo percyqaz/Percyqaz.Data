@@ -310,7 +310,22 @@ type ``2: Round Trips``() =
 
     [<Test>]
     member this.CSharpDictionaries() =
-        Assert.Fail("too lazy at this current time")
+        let original = new Dictionary<_, int>()
+        original.Add("A", 3)
+        original.Add("B", 8)
+        let res = original |> Json.ToString |> (fun s -> printfn "%s" s; s) |> Json.FromString<Dictionary<string, int>> |> expect
+        Assert.AreEqual(
+            original |> Seq.map (|KeyValue|) |> Map.ofSeq,
+            res |> Seq.map (|KeyValue|) |> Map.ofSeq
+        )
+        let original = new Dictionary<_, int>()
+        original.Add(8, 3)
+        original.Add(3, 8)
+        let res = original |> Json.ToString |> (fun s -> printfn "%s" s; s) |> Json.FromString<Dictionary<int, int>> |> expect
+        Assert.AreEqual(
+            original |> Seq.map (|KeyValue|) |> Map.ofSeq,
+            res |> Seq.map (|KeyValue|) |> Map.ofSeq
+        )
 
     [<Test>]
     member this.AnonymousRecords() =

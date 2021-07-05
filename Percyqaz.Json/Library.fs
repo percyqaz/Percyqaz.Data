@@ -276,6 +276,19 @@ module Json =
                         Default = fun () -> Unchecked.defaultof<'T>
                     }
 
+                // quick-fix to supporting value options! todo: get this into TypeShape instead of hacking it on
+                type ShapeFSharpValueOption<'T> () =
+                    interface IShapeFSharpOption with
+                        member _.Element = shapeof<'T> :> _
+
+                let (|FSharpValueOption|_|) (s: TypeShape) =
+                    match s.ShapeInfo with
+                    | Generic(td,ta) when td = typedefof<_ voption> ->
+                        Activator.CreateInstanceGeneric<ShapeFSharpValueOption<_>>(ta)
+                        :?> IShapeFSharpOption
+                        |> Some
+                    | _ -> None
+
             module Rules =
                 
                 let customCodecMethod =
@@ -440,6 +453,7 @@ module Json =
                 | Shape.Enum s -> enum (cache, settings, rules) s
 
                 | Shape.FSharpOption s -> option (cache, settings, rules) s
+                | Helpers.FSharpValueOption s -> voption (cache, settings, rules) s
                 | Shape.Tuple (:? ShapeTuple<'T> as shape) -> tuple (cache, settings, rules) shape
                 | Shape.FSharpRecord (:? ShapeFSharpRecord<'T> as shape) -> record (cache, settings, rules) shape
                 | Shape.Dictionary s -> dict (cache, settings, rules) s
@@ -474,6 +488,22 @@ module Json =
                                 | JSON.Null -> None
                                 | _ -> tP.DecodeWithDefault json |> Some
                             Default = fun () -> None
+                        } |> Helpers.cast
+                } |> s.Element.Accept
+                
+            and private voption (cache, settings, rules) (s: IShapeFSharpOption) =
+                { new ITypeVisitor<JsonCodec<'T>> with
+                    member _.Visit<'t>() =
+                        let tP =
+                            if typeof<'t> = typeof<string> then Primitives.stringNoNull |> Helpers.cast
+                            else getCodec<'t>(cache, settings, rules)
+                        {
+                            Encode = function ValueSome v -> tP.Encode v | ValueNone -> JSON.Null
+                            Decode = fun _ json ->
+                                match json with
+                                | JSON.Null -> ValueNone
+                                | _ -> tP.DecodeWithDefault json |> ValueSome
+                            Default = fun () -> ValueNone
                         } |> Helpers.cast
                 } |> s.Element.Accept
 
@@ -682,7 +712,7 @@ module Json =
                         }
                     | n ->
                         {
-                            Encode = fun case -> Array.map (fun codec-> codec.EncodeMember case) codecs |> List.ofArray |> JSON.Array
+                            Encode = fun case -> Array.map (fun codec -> codec.EncodeMember case) codecs |> List.ofArray |> JSON.Array
                             Decode = fun o json ->
                                 match json with
                                 | JSON.Array xs when xs.Length = n ->
