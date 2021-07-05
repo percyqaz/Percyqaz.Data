@@ -148,18 +148,27 @@ and ComplexRecordToo =
             list = [0; 1]
             poco = POCO(5.0, 10.0)
             anonymous = {|string = ""; int = 0|}
-        } 
+        }
+
+type RequireRec =
+    {
+        [<Json.Required>]
+        Item1: string array
+        Item2: int
+    }
+    static member Default = { Item1 = [||]; Item2 = 7 }
 
 let expect (res: JsonResult<'t>) =
     match res with
     | Ok r -> r
     | Error e -> raise e
 
-//let ExpectFailure = function JsonResult.Ok _ -> Assert.Fail("Mapping was expected to fail here but succeeded"); failwith "impossible" | o -> o
-//let ExpectSuccess = function JsonResult.Error v -> Assert.Pass(sprintf "Mapping failed unexpectedly: %O" v); failwith "impossible" | o -> o
-
 let RoundTrip (json: JsonEncoder) (x: 'T) = Assert.AreEqual(x, x |> json.ToString |> (fun j -> printfn "%s" j; j) |> json.FromString<'T> |> expect)
 let RoundTripList (json: JsonEncoder) (xs: 'T list) = List.map (RoundTrip json) xs |> ignore
+
+(*
+    Testing of round-trips for primitives
+*)
 
 [<TestFixture>]
 type ``1: Basic Round Trips``() =
@@ -223,6 +232,10 @@ type ``1: Basic Round Trips``() =
         [DateTimeOffset.Now; DateTimeOffset.MaxValue; DateTimeOffset.MinValue] |> RoundTripList Json
         [TimeSpan.MinValue; TimeSpan.MaxValue; TimeSpan.FromTicks(25565L)] |> RoundTripList Json
         Assert.Pass()
+
+(*
+    Testing of round-trips for more complex types
+*)
 
 [<TestFixture>]
 type ``2: Round Trips``() =
@@ -297,10 +310,20 @@ type ``2: Round Trips``() =
 
     [<Test>]
     member this.CSharpDictionaries() =
-        Assert.Fail() //too lazy at this current time
+        Assert.Fail("too lazy at this current time")
+
+    [<Test>]
+    member this.AnonymousRecords() =
+        {| a = 7y; b = 88uy; c = (4, 2) |} |> RoundTrip Json
+        {||} |> RoundTrip Json
+
+(*
+    Tests about the structure of the JSON outputted for certain types
+    i.e. When encoding an array, the output JSON should be an JSON array
+*)
 
 [<TestFixture>]
-type ``3: Json Formatting``() =
+type ``3: Json Output``() =
     
     let Json = new JsonEncoder()
     let JsonEncodeMapsAsArr = new JsonEncoder({ JsonSettings.Default with EncodeAllMapsAsArrays = true })
@@ -401,11 +424,40 @@ type ``3: Json Formatting``() =
         SimpleRecordWithDefault.Default
         |> (Json.ToJson >> isObj)
         |> Assert.That
+        
+(*
+    Tests about the formatting of JSON text
+*)
 
 [<TestFixture>]
 type ``4: Text Formatting``() =
     
-    let Json = new JsonEncoder()
+    let Json = new JsonEncoder({JsonSettings.Default with FormatExpandArrays = false; FormatExpandObjects = false})
+    let JsonExpandArr = new JsonEncoder({JsonSettings.Default with FormatExpandArrays = true; FormatExpandObjects = false})
+    let JsonExpandObj = new JsonEncoder({JsonSettings.Default with FormatExpandArrays = false; FormatExpandObjects = true})
+    let JsonExpandBoth = new JsonEncoder({JsonSettings.Default with FormatExpandArrays = true; FormatExpandObjects = true})
+
+    // these tests are just for looking at in the test explorer
+    // being lax about these tests passing/failing is in my design principles of "not caring about formatting"
+    [<Test>]
+    member this.ExpandNothing() =
+        ComplexRecordToo.Default |> Json.ToString |> printfn "%s"
+
+    [<Test>]
+    member this.ExpandArr() =
+        ComplexRecordToo.Default |> JsonExpandArr.ToString |> printfn "%s"
+
+    [<Test>]
+    member this.ExpandObj() =
+        ComplexRecordToo.Default |> JsonExpandObj.ToString |> printfn "%s"
+
+    [<Test>]
+    member this.ExpandBoth() =
+        ComplexRecordToo.Default |> JsonExpandBoth.ToString |> printfn "%s"
+
+(*
+    Performance tests for round-tripping objects repeatedly
+*)
 
 [<TestFixture>]
 type ``5: Performance``() =
@@ -423,7 +475,7 @@ type ``5: Performance``() =
     let thousand (original: 'T) =
         let mutable result = original
         for i in 0 .. 999 do
-            result <- Json.ToJson result |> Json.FromJson<'T> |> expect
+            result <- Json.ToString result |> Json.FromString<'T> |> expect
         Assert.AreEqual(original, result)
 
     [<Test>]
@@ -455,4 +507,95 @@ type ``5: Performance``() =
     [<Test>]
     member this.Float64() =
         Math.PI |> thousand
+
+
+[<TestFixture>]
+type ``6: Cross-Type and Mismatch Round Trips``() =
+    
+    let Json = new JsonEncoder()
+
+    [<Test>]
+    member this.Record_CanOmitMember() =
+        let res = Json.FromString<RequireRec> """{ "Item1": [""] }""" |> expect
+        Assert.AreEqual({ RequireRec.Default with Item1 = [|""|] }, res)
+        printfn "%A" res
+    
+    [<Test>]
+    member this.Record_CanIgnoreErrorInMember() =
+        let res = Json.FromString<RequireRec> """{ "Item1": [""], "Item2": null }""" |> expect
+        Assert.AreEqual({ RequireRec.Default with Item1 = [|""|] }, res)
+        printfn "%A" res
+    
+    [<Test>]
+    member this.Record_CannotOmitRequiredMember() =
+        Json.FromString<RequireRec> """{ "Item2": null }"""
+        |> function
+        | Ok _ -> Assert.Fail("This should not have succeeded!")
+        | Error err -> printfn "%O" err; Assert.Pass()
+
+    [<Test>]
+    member this.Record_CannotIgnoreErrorInRequiredMember() =
+        Json.FromString<RequireRec> """{ "Item1": 3 }"""
+        |> function
+        | Ok _ -> Assert.Fail("This should not have succeeded!")
+        | Error err -> printfn "%O" err; Assert.Pass()
+
+    [<Test>]
+    member this.Number_Reparses() =
+        Assert.Throws<MapFailure> ( fun () -> Json.FromString<int> "3.14" |> expect |> ignore ) |> printfn "%O"
+        Assert.Throws<MapFailure> ( fun () -> Json.FromString<byte> "256" |> expect |> ignore ) |> printfn "%O"
+
+    [<Test>]
+    member this.Other_Reparses() =
+        Assert.DoesNotThrow ( fun () -> SimpleRecordWithDefault.Default |> Json.ToString |> Json.FromString<SimpleRecord> |> expect |> printfn "%A" )
+        Assert.DoesNotThrow ( fun () -> ValueSome "Hello" |> Json.ToString |> Json.FromString<string option> |> expect |> printfn "%A" )
+        Assert.DoesNotThrow ( fun () -> StUnion.Unary 5 |> Json.ToString |> Json.FromString<Union> |> expect |> printfn "%A" )
         
+open System.IO
+
+[<TestFixture>]
+type ``7: Other``() =
+    
+    let Json = new JsonEncoder()
+    do
+        if Directory.Exists("Test-Output") then Directory.Delete("Test-Output", true)
+        Directory.CreateDirectory("Test-Output") |> ignore
+
+    let filepath name = Path.Combine("Test-Output", name)
+
+    [<Test>]
+    member this.FileRoundTrip() =
+        let original = SimpleRecordWithDefault.Default
+        original
+        |> Json.ToFile (filepath "test.json", false)
+        let res = Json.FromFile<SimpleRecordWithDefault>(filepath "test.json") |> expect
+        Assert.AreEqual(original, res)
+        printfn "%A" res
+
+    [<Test>]
+    member this.FileErrorDoesNotThrow() =
+        Json.FromFile<SimpleRecordWithDefault> (filepath "doesn't_exist.json")
+        |> function
+        | Ok _ -> Assert.Fail("This should not have succeeded!")
+        | Error err -> printfn "%O" err; Assert.Pass()
+
+    [<Test>]
+    member this.FileOverwriteProtection() =
+        5 |> Json.ToFile (filepath "overwrite.json", false)
+        Assert.Throws<IOException>( fun () -> 5 |> Json.ToFile (filepath "overwrite.json", false) ) |> ignore
+        Assert.DoesNotThrow( fun () -> 5 |> Json.ToFile (filepath "overwrite.json", true) )
+
+    [<Test>]
+    member this.JsonToJsonIsIdempotent() =
+        Assert.AreEqual(
+            5,
+            5 |> Json.ToJson |> Json.ToJson |> Json.ToJson |> Json.FromJson<int> |> expect
+        )
+        Assert.AreEqual(
+            Some "hello" |> Json.ToJson |> Json.ToJson,
+            Some "hello" |> Json.ToJson
+        )
+        Assert.AreEqual(
+            JSON.String "3.5" |> Json.FromJson<JSON> |> expect |> Json.FromJson<float32>,
+            JSON.String "3.5" |> Json.FromJson<float32>
+        )

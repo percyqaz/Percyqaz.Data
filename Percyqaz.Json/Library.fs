@@ -537,7 +537,6 @@ module Json =
                                 if Map.containsKey name map then
                                     o <- try codec.DecodeMember o map.[name] with :? MapFailure -> if required then reraise() else o
                                 else if required then Error.generic json (sprintf "Required field '%s' was not provided" name)
-                                // else fail if required
                             o
                         | _ -> Error.expectedObj json
                     Default = defaultCtor
@@ -751,6 +750,7 @@ module Json =
         member this.ToFile (path, overwrite) (obj: 'T) =
             if overwrite || (File.Exists path |> not) then
                 File.WriteAllText(path, this.ToString obj)
+            else raise <| IOException "This file already exists!"
 
         member this.FromJson<'T> (json: JSON) : JsonResult<'T> = 
             let codec = Mapping.getCodec(cache, settings, rules)
