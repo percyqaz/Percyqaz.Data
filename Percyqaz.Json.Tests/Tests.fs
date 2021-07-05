@@ -303,7 +303,7 @@ type ``2: Round Trips``() =
 type ``3: Json Formatting``() =
     
     let Json = new JsonEncoder()
-    let JsonEncodeMapsAsArr = new JsonEncoder() //setting nyi
+    let JsonEncodeMapsAsArr = new JsonEncoder({ JsonSettings.Default with EncodeAllMapsAsArrays = true })
     
     let isString = fun json -> printfn "%A" json; match json with JSON.String _ -> true | _ -> false
     let isArr = fun json -> printfn "%A" json; match json with JSON.Array _ -> true | _ -> false

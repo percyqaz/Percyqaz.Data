@@ -27,6 +27,8 @@ module Json =
 
             AllowNullStrings: bool
             AllowNullArrays: bool
+
+            EncodeAllMapsAsArrays: bool
         }
         static member Default =
             {
@@ -35,9 +37,10 @@ module Json =
 
                 AllowNullStrings = false
                 AllowNullArrays = false
+
+                EncodeAllMapsAsArrays = false
                 //Allow NaN in floats
                 //Allow +-Infinity in floats
-                //All dicts and maps should be [(Key, Value)] format instead of object
             }
 
     let IDPRINT x = printfn "%A" x; x
@@ -543,7 +546,12 @@ module Json =
             and private dict (cache, settings, rules) (s: IShapeDictionary) =
                 { new IDictionaryVisitor<JsonCodec<'T>> with
                     member _.Visit<'K, 'V when 'K : equality>() =
-                        if typeof<'K> = typeof<string> then
+                        let from_xs (xs: (_ * 'V) list) =
+                            let d = new Collections.Generic.Dictionary<_, 'V>()
+                            for (key, value) in xs do
+                                d.Add(key, value)
+                            d
+                        if typeof<'K> = typeof<string> && not settings.EncodeAllMapsAsArrays then
                             let tP = getCodec<'V>(cache, settings, rules)
                             {
                                 Encode = fun dictionary ->
@@ -552,40 +560,37 @@ module Json =
                                     |> Seq.map (fun (key, value) -> (key, tP.Encode value))
                                     |> Map.ofSeq
                                     |> JSON.Object
-                                Decode = fun _ json ->
-                                    match json with
-                                    | JSON.Object map ->
-                                        let d = new Collections.Generic.Dictionary<string, 'V>()
-                                        for (key, innerJson) in Map.toSeq map do
-                                            d.Add(key, tP.DecodeWithDefault innerJson)
-                                        d
-                                    | _ -> Error.expectedObj json
+                                Decode = 
+                                    let list_tP = getCodec<(string * 'V) list>(cache, settings, rules)
+                                    fun _ json ->
+                                        match json with
+                                        | JSON.Object map ->
+                                            let d = new Collections.Generic.Dictionary<string, 'V>()
+                                            for (key, innerJson) in Map.toSeq map do
+                                                d.Add(key, tP.DecodeWithDefault innerJson)
+                                            d
+                                        // bad error message; will say expected a list when normally an object is expected
+                                        | _ -> list_tP.DecodeWithDefault json |> from_xs
                                 Default = fun () -> new Collections.Generic.Dictionary<string, 'V>()
                             } |> Helpers.cast
                         else
                             getCodec<('K * 'V) list>(cache, settings, rules)
-                            |> Codec.map
-                                (Seq.map (|KeyValue|) >> List.ofSeq)
-                                ( fun xs ->
-                                    let d = new Collections.Generic.Dictionary<'K, 'V>()
-                                    for (key, value) in xs do
-                                        d.Add(key, value)
-                                    d )
+                            |> Codec.map (Seq.map (|KeyValue|) >> List.ofSeq) from_xs
                             |> Helpers.cast
                 } |> s.Accept
 
             and private map (cache, settings, rules) (s: IShapeFSharpMap) =
                 { new IFSharpMapVisitor<JsonCodec<'T>> with
                     member _.Visit<'K, 'V when 'K : comparison>() =
-                        if typeof<'K> = typeof<string> then
+                        if typeof<'K> = typeof<string> && not settings.EncodeAllMapsAsArrays then
                             let tP = getCodec<'V>(cache, settings, rules)
+                            let list_tP = getCodec<(string * 'V) list>(cache, settings, rules)
                             {
                                 Encode = Map.map (fun _ -> tP.Encode) >> JSON.Object
                                 Decode = fun _ json ->
                                     match json with
                                     | JSON.Object map -> Map.map (fun _ -> tP.DecodeWithDefault) map
-                                    // todo: support for list-style too?
-                                    | _ -> Error.expectedObj json
+                                    | _ -> list_tP.DecodeWithDefault json |> Map.ofList
                                 Default = fun () -> Map.empty<string, 'V>
                             } |> Helpers.cast
                         else
