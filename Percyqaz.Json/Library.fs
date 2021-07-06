@@ -39,14 +39,11 @@ module Json =
                 AllowNullArrays = false
 
                 EncodeAllMapsAsArrays = false
-                //Allow NaN in floats
-                //Allow +-Infinity in floats
             }
-
-    let IDPRINT x = printfn "%A" x; x
 
     module Json =
 
+        type AllRequiredAttribute() = inherit Attribute()
         type RequiredAttribute() = inherit Attribute()
 
         module Parsing =
@@ -189,7 +186,7 @@ module Json =
             open TypeShape.Core
             open TypeShape.Core.Utils
 
-            type JsonPartialCodec<'T, 'U> =
+            type JsonMemberCodec<'T, 'U> =
                 {
                     EncodeMember: 'T -> JSON
                     DecodeMember: 'T -> JSON -> 'T
@@ -420,7 +417,7 @@ module Json =
                     Cached(value = f) -> f | NotCached t -> let p = genCodec(cache, settings, rules) in cache.Commit t p)
                 |> lock cache
 
-            and genCodec (cache: TypeGenerationContext, settings, rules) : JsonCodec<'T> =
+            and private genCodec (cache: TypeGenerationContext, settings, rules) : JsonCodec<'T> =
                 
                 // custom codecs:
 
@@ -548,7 +545,7 @@ module Json =
                     if isNull mi then true, fun () ->
                         Array.map (fun (codec, _) -> codec.DefaultMember()) codecs
                         |> fun os -> FSharpValue.MakeRecord(typ, os) :?> 'T
-                    else false, fun () -> mi.GetValue(null) :?> 'T
+                    else (typ.GetCustomAttributes(typeof<AllRequiredAttribute>, true).Length > 0), fun () -> mi.GetValue(null) :?> 'T
 
                 let codecs = Array.map (fun (codec, f: IShapeMember<'T>) -> (codec, f.Label, requireAll || f.MemberInfo.GetCustomAttributes(typeof<RequiredAttribute>, true).Length > 0)) codecs
 
