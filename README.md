@@ -21,4 +21,8 @@ Yet another JSON library, specificially for my F# JSON needs which were not met 
 - Exceptions are thrown internally instead of railroading because the code is simpler
 - Rules for mapping back and forth are bundled together for easy combinator use
 
+## Getting started
 
+You can get this package on [NuGet](https://www.nuget.org/packages/Percyqaz.Json/)
+
+You should read [the documentation here](https://github.com/percyqaz/Percyqaz.Json/wiki) (it's not long)
