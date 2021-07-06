@@ -365,7 +365,7 @@ module Json =
                             match json with
                             | JSON.String s -> s
                             | _ -> Error.expectedStr json
-                        Default = fun () -> ""
+                        Default = fun () -> String.Empty
                     }
 
                 let timespan = Codec.map (fun (ts: TimeSpan) -> ts.Ticks) TimeSpan.FromTicks int64
