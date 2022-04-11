@@ -20,6 +20,13 @@ module Json =
 
     type JsonResult<'T> = Result<'T, Exception>
 
+    module JsonResult =
+
+        let expect res =
+            match res with
+            | Ok v -> v
+            | Error err -> raise err
+
     type JsonSettings =
         {
             FormatExpandArrays: bool
