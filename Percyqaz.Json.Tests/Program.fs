@@ -1,7 +1,8 @@
-open Percyqaz.Json
+﻿open Percyqaz.Json
 
-module Program = 
+let JSON_Manager = Json(Json.Settings.Default).WithDefaults()
 
-    let [<EntryPoint>] main _ =
-        printfn "Run the tests using NUnit."
-        0
+do
+
+let cdc = JSON_Manager.GetCodec<(byte option * int) array>()
+printfn "%A" (cdc.To [|Some 7uy, 5; None, System.Int32.MinValue|] |> cdc.From)

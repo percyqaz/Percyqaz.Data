@@ -10,3 +10,9 @@
 /Percyqaz.Json/bin/Release/netstandard2.0
 /Percyqaz.Json/bin
 /Percyqaz.Json.Tests/bin/Release/netcoreapp3.1
+/Percyqaz.Json.v3/obj
+/Percyqaz.Json.Tests/bin/Release/net6.0
+/Percyqaz.Json.v1/bin
+/Percyqaz.Json.v1/obj
+/Percyqaz.Json.v1.Tests/bin/Release/netcoreapp3.1
+/Percyqaz.Json.v1.Tests/obj
