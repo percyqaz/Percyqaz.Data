@@ -583,12 +583,11 @@ module Json =
             
             let defaultFunc =
                 if isNull mi then
-                    let d = Default_Delegate<'T>(
-                        fun () -> 
-                            let vs = codecs |> Array.map (fun x -> x.Default())
-                            constructor vs |> unbox<'T>
-                        )
-                    fun () -> unbox<'T> (d.DynamicInvoke())
+                    fun () -> 
+                        codecs
+                        |> Array.map (fun x -> x.Default())
+                        |> constructor
+                        |> unbox<'T>
                 else 
                     let d = Default_Delegate<'T>.CreateDelegate(typeof<Default_Delegate<'T>>, mi.GetMethod)
                     fun () -> unbox<'T> (d.DynamicInvoke())
