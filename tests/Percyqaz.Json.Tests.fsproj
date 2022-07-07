@@ -10,7 +10,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\Percyqaz.Json\Percyqaz.Json.fsproj" />
+    <ProjectReference Include="..\src\Percyqaz.Json.fsproj" />
   </ItemGroup>
 
   <ItemGroup>
