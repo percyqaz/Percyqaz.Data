@@ -14,9 +14,9 @@ type Record =
 type Union =
     | A
     | B of Record
-    | C of int
+    | C of struct (int * int * byte)
 
 do
 
 let cdc = JSON_Manager.GetCodec<Union array>()
-printfn "%O" (cdc.To [|B Record.Default; B { Record.Default with X = 5 }; A; C 5|])
+printfn "%A" (cdc.To [|B Record.Default; B { Record.Default with X = 5 }; A; C (struct (5, 5, 7uy))|] |> cdc.FromDefault)

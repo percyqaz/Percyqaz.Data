@@ -569,6 +569,98 @@ module Json =
                 let c_e = ctx.GetCodec<'E>()
                 fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default(), c_e.Default())
 
+        type StructTuple2<'A, 'B>() =
+            inherit Codec<struct ('A * 'B)>()
+            override this.To (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                fun (struct (a, b)) -> JSON.Array [c_a.To a; c_b.To b]
+            override this.From (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b] -> (c_a.FromDefault a, c_b.FromDefault b)
+                | _ -> failwithf "Expected a JSON array with 2 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                fun _ -> (c_a.Default(), c_b.Default())
+        
+                
+        type StructTuple3<'A, 'B, 'C>() =
+            inherit Codec<struct ('A * 'B * 'C)>()
+            override this.To (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                fun (struct (a, b, c)) -> JSON.Array [c_a.To a; c_b.To b; c_c.To c]
+            override this.From (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c)
+                | json -> failwithf "Expected a JSON array with 3 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default())
+        
+        type StructTuple4<'A, 'B, 'C, 'D>() =
+            inherit Codec<struct ('A * 'B * 'C * 'D)>()
+            override this.To (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                fun (struct (a, b, c, d)) -> JSON.Array [c_a.To a; c_b.To b; c_c.To c; c_d.To d]
+            override this.From (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c; d] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d)
+                | json -> failwithf "Expected a JSON array with 4 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default())
+        
+        type StructTuple5<'A, 'B, 'C, 'D, 'E>() =
+            inherit Codec<struct ('A * 'B * 'C * 'D * 'E)>()
+            override this.To (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                let c_e = ctx.GetCodec<'E>()
+                fun (struct (a, b, c, d, e)) -> JSON.Array [c_a.To a; c_b.To b; c_c.To c; c_d.To d; c_e.To e]
+            override this.From (ctx: Context) =
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                let c_e = ctx.GetCodec<'E>()
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c; d; e] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d, c_e.FromDefault e)
+                | json -> failwithf "Expected a JSON array with 5 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                let c_e = ctx.GetCodec<'E>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default(), c_e.Default())
+
+
     type AutoCodecAttribute(RequireAll: bool) =
         inherit Attribute()
         member this.RequireAll = RequireAll
