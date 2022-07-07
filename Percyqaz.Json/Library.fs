@@ -80,6 +80,7 @@ module Json =
         let parseString str = run jsonParser str
 
     module Formatting =
+
         open System.Text
 
         let stringBuildJson expandObj expandArray json =
@@ -171,7 +172,9 @@ module Json =
 
         let formatJson (settings: Settings) json = stringBuildJson settings.FormatExpandObjects settings.FormatExpandArrays json
 
-    type CachedCodec<'T> = { To: 'T -> JSON; From: JSON -> 'T }
+    type CachedCodec<'T> = 
+        { To: 'T -> JSON; From: 'T -> JSON -> 'T; Default: unit -> 'T }
+        member this.FromDefault json : 'T = this.From (this.Default()) json
 
     [<AbstractClass>]
     type Context(settings: Settings) =
@@ -181,107 +184,110 @@ module Json =
     [<AbstractClass>]
     type Codec<'T>() =
         abstract member To : Context -> ('T -> JSON)
-        abstract member From : Context -> (JSON -> 'T) // or throw exception
+        abstract member From : Context -> ('T -> JSON -> 'T) // or throw exception
 
     module Codecs =
 
         type Unit() =
             inherit Codec<unit>()
             override this.To (ctx: Context) = fun _ -> JSON.Null
-            override this.From (ctx: Context) = fun _ -> ()
+            override this.From (ctx: Context) = fun _ _ -> ()
 
         type Bool() =
             inherit Codec<bool>()
             override this.To (ctx: Context) = JSON.Bool
-            override this.From (ctx: Context) = function JSON.Bool b -> b | json -> failwithf "Expected True or False, got: %O" json
+            override this.From (ctx: Context) = fun _ json -> 
+                match json with 
+                | JSON.Bool b -> b
+                | _ -> failwithf "Expected True or False, got: %O" json
 
         type UInt8() =
             inherit Codec<uint8>()
             override this.To (ctx: Context) = 
                 (fun (i: uint8) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Byte.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for UInt8: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type Int8() =
             inherit Codec<int8>()
             override this.To (ctx: Context) = 
                 (fun (i: int8) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = SByte.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Int8: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type UInt16() =
             inherit Codec<uint16>()
             override this.To (ctx: Context) = 
                 (fun (i: uint16) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = UInt16.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for UInt16: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type Int16() =
             inherit Codec<int16>()
             override this.To (ctx: Context) = 
                 (fun (i: int16) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Int16.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Int16: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type UInt32() =
             inherit Codec<uint32>()
             override this.To (ctx: Context) = 
                 (fun (i: uint32) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = UInt32.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for UInt32: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type Int32() =
             inherit Codec<int32>()
             override this.To (ctx: Context) = 
                 (fun (i: int32) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Int32.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Int32: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type UInt64() =
             inherit Codec<uint64>()
             override this.To (ctx: Context) = 
                 (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = UInt64.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for UInt64: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
         
         type Int64() =
             inherit Codec<int64>()
             override this.To (ctx: Context) = 
                 (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Int64.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Int64: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
                 
         type Float32() =
             inherit Codec<float32>()
@@ -290,12 +296,12 @@ module Json =
                     let s = f.ToString CultureInfo.InvariantCulture
                     if Single.IsNaN f || Single.IsInfinity f then JSON.String s else JSON.Number s
                 )
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Single.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Float32: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
                 
         type Float64() =
             inherit Codec<float>()
@@ -304,20 +310,20 @@ module Json =
                     let s = f.ToString CultureInfo.InvariantCulture
                     if Double.IsNaN f || Double.IsInfinity f then JSON.String s else JSON.Number s
                 )
-            override this.From (ctx: Context) =
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s | JSON.Number s -> 
                     let ok, res = Double.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
                     if ok then res else failwithf "Parse failure for Float64: %s" s
-                | json -> failwithf "Expected a JSON number, got: %O" json
+                | _ -> failwithf "Expected a JSON number, got: %O" json
 
         type Char() =
             inherit Codec<char>()
             override this.To (ctx: Context) = string >> JSON.String
-            override this.From (ctx: Context) = 
-                function 
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
                 | JSON.String s when s.Length > 0 -> s.[0]
-                | json -> failwithf "Expected a nonempty JSON string, got: %O" json
+                | _ -> failwithf "Expected a nonempty JSON string, got: %O" json
         
         type String() =
             inherit Codec<string>()
@@ -328,18 +334,18 @@ module Json =
                     function null -> failwith "Null strings not permitted" | s -> JSON.String s
 
             override this.From (ctx: Context) =
-                if ctx.Settings.AllowNullStrings then
-                    function
+                if ctx.Settings.AllowNullStrings then fun _ json ->
+                    match json with
                     | JSON.String s -> s
                     | JSON.Null -> null
-                    | json -> failwithf "Expected a JSON string or null, got: %O" json
-                else
-                    function JSON.String s -> s | json -> failwithf "Expected a JSON string, got: %O" json
+                    | _ -> failwithf "Expected a JSON string or null, got: %O" json
+                else fun _ json ->
+                    match json with JSON.String s -> s | _ -> failwithf "Expected a JSON string, got: %O" json
 
         type Json() =
             inherit Codec<JSON>()
             override this.To _ = id
-            override this.From _ = id
+            override this.From _ = fun _ x -> x
 
         type List<'T>() =
             inherit Codec<'T list>()
@@ -349,7 +355,10 @@ module Json =
 
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                function JSON.Array xs -> List.map cdc.From xs | json -> failwithf "Expected a JSON array, got: %O" json
+                fun _ json ->
+                match json with
+                | JSON.Array xs -> List.map cdc.FromDefault xs
+                | _ -> failwithf "Expected a JSON array, got: %O" json
 
         type Array<'T>() =
             inherit Codec<'T array>()
@@ -359,7 +368,66 @@ module Json =
         
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                function JSON.Array xs -> List.map cdc.From xs |> Array.ofList | json -> failwithf "Expected a JSON array, got: %O" json
+                fun _ json ->
+                match json with
+                | JSON.Array xs -> List.map cdc.FromDefault xs |> Array.ofList
+                | _ -> failwithf "Expected a JSON array, got: %O" json
+
+        type Dictionary<'K, 'V when 'K : comparison>() =
+            inherit Codec<Collections.Generic.Dictionary<'K, 'V>>()
+            override this.To (ctx: Context) =
+                if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> <> typeof<string> then
+                    let cdc = ctx.GetCodec<'V>()
+
+                    Seq.map (|KeyValue|)
+                    >> Seq.map (fun (key, value) -> (key.ToString(), cdc.To value))
+                    >> Map.ofSeq
+                    >> JSON.Object
+                else
+                    let cdc = ctx.GetCodec<('K * 'V) list>()
+                    Seq.map (|KeyValue|)
+                    >> List.ofSeq
+                    >> cdc.To
+            override this.From (ctx: Context) =
+                let list_cdc = ctx.GetCodec<('K * 'V) list>()
+                let v_cdc = ctx.GetCodec<'V>()
+                fun dict json ->
+                match json with
+                | JSON.Object xs when typeof<'K> = typeof<string> ->
+                    for (k, v) in xs |> Map.map (fun k v -> v_cdc.From (v_cdc.Default()) v) |> Map.toSeq do
+                        dict.Add(unbox<'K> k, v)
+                    dict
+                | _ -> 
+                    for (k, v) in list_cdc.From (list_cdc.Default()) json do
+                        dict.Add(k, v)
+                    dict
+
+        type Map<'K, 'V when 'K : comparison and 'V : comparison>() =
+            inherit Codec<Collections.Map<'K, 'V>>()
+            override this.To (ctx: Context) =
+                if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> <> typeof<string> then
+                    let cdc = ctx.GetCodec<'V>()
+
+                    Map.toSeq
+                    >> Seq.map (fun (key, value) -> (key.ToString(), cdc.To value))
+                    >> Map.ofSeq
+                    >> JSON.Object
+                else
+                    let cdc = ctx.GetCodec<('K * 'V) list>()
+                    Map.toList
+                    >> cdc.To
+
+            override this.From (ctx: Context) =
+                let list_cdc = ctx.GetCodec<('K * 'V) list>()
+                let v_cdc = ctx.GetCodec<'V>()
+                fun _ json ->
+                match json with
+                | JSON.Object xs when typeof<'K> = typeof<string> ->
+                    Map.toSeq xs
+                    |> Seq.map (fun (key, value) -> (unbox<'K> key, v_cdc.From (v_cdc.Default()) value))
+                    |> Map.ofSeq
+                | _ -> 
+                    list_cdc.From (list_cdc.Default()) json |> Map.ofList
 
         type Option<'T>() =
             inherit Codec<'T option>()
@@ -369,7 +437,8 @@ module Json =
 
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                function JSON.Null -> None | json -> Some (cdc.From json)
+                fun existing json ->
+                match json with JSON.Null -> None | _ -> Some (cdc.From (existing |> Option.defaultWith cdc.Default) json)
                 
         type ValueOption<'T>() =
             inherit Codec<'T voption>()
@@ -379,7 +448,8 @@ module Json =
                 
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                function JSON.Null -> ValueNone | json -> ValueSome (cdc.From json)
+                fun existing json ->
+                match json with JSON.Null -> ValueNone | _ -> ValueSome (cdc.From (existing |> ValueOption.defaultWith cdc.Default) json)
 
         type Tuple2<'A, 'B>() =
             inherit Codec<'A * 'B>()
@@ -390,9 +460,10 @@ module Json =
             override this.From (ctx: Context) =
                 let c_a = ctx.GetCodec<'A>()
                 let c_b = ctx.GetCodec<'B>()
-                function
-                | JSON.Array [a; b] -> (c_a.From a, c_b.From b)
-                | json -> failwithf "Expected a JSON array with 2 elements, got: %O" json
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b] -> (c_a.FromDefault a, c_b.FromDefault b)
+                | _ -> failwithf "Expected a JSON array with 2 elements, got: %O" json
                 
         type Tuple3<'A, 'B, 'C>() =
             inherit Codec<'A * 'B * 'C>()
@@ -405,8 +476,9 @@ module Json =
                 let c_a = ctx.GetCodec<'A>()
                 let c_b = ctx.GetCodec<'B>()
                 let c_c = ctx.GetCodec<'C>()
-                function
-                | JSON.Array [a; b; c] -> (c_a.From a, c_b.From b, c_c.From c)
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c)
                 | json -> failwithf "Expected a JSON array with 3 elements, got: %O" json
         
         type Tuple4<'A, 'B, 'C, 'D>() =
@@ -422,8 +494,9 @@ module Json =
                 let c_b = ctx.GetCodec<'B>()
                 let c_c = ctx.GetCodec<'C>()
                 let c_d = ctx.GetCodec<'D>()
-                function
-                | JSON.Array [a; b; c; d] -> (c_a.From a, c_b.From b, c_c.From c, c_d.From d)
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c; d] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d)
                 | json -> failwithf "Expected a JSON array with 4 elements, got: %O" json
         
         type Tuple5<'A, 'B, 'C, 'D, 'E>() =
@@ -441,9 +514,28 @@ module Json =
                 let c_c = ctx.GetCodec<'C>()
                 let c_d = ctx.GetCodec<'D>()
                 let c_e = ctx.GetCodec<'E>()
-                function
-                | JSON.Array [a; b; c; d; e] -> (c_a.From a, c_b.From b, c_c.From c, c_d.From d, c_e.From e)
+                fun _ json ->
+                match json with
+                | JSON.Array [a; b; c; d; e] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d, c_e.FromDefault e)
                 | json -> failwithf "Expected a JSON array with 5 elements, got: %O" json
+
+    type AutoCodecAttribute(RequireAll: bool) =
+        inherit Attribute()
+        member this.RequireAll = RequireAll
+
+    module AutoCodecs =
+
+        open FSharp.Reflection
+        
+        let record<'T>() : CachedCodec<'T> =
+            let ty = typeof<'T>
+
+            let fields = FSharpType.GetRecordFields ty
+            let fieldNames = fields |> Array.map (fun f -> f.Name)
+            let reader = FSharpValue.PreComputeRecordReader ty
+            let constructor = FSharpValue.PreComputeRecordConstructor ty
+
+            failwith "nyi"
 
 open Json
 
@@ -510,7 +602,7 @@ type Json(settings: Settings) as this =
 
                 ) codecs
         match cdc with
-        | Some cdc -> { To = cdc.To ctx; From = cdc.From ctx }
+        | Some cdc -> { To = cdc.To ctx; From = cdc.From ctx; Default = fun () -> Unchecked.defaultof<_> }
         | None -> failwithf "No codec found for type %O" ty
 
     member this.GetCodec<'T>() : CachedCodec<'T> =
