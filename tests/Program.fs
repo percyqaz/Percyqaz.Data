@@ -10,7 +10,13 @@ type Record =
     }
     static member Default = { X = -1; Y = ["5"] }
 
+[<Json.AutoCodec(true)>]
+type Union =
+    | A
+    | B of Record
+    | C of int
+
 do
 
-let cdc = JSON_Manager.GetCodec<Record array>()
-printfn "%A" (cdc.To [|Record.Default; { Record.Default with X = 5 }|] |> cdc.FromDefault)
+let cdc = JSON_Manager.GetCodec<Union array>()
+printfn "%O" (cdc.To [|B Record.Default; B { Record.Default with X = 5 }; A; C 5|])

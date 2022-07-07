@@ -14,6 +14,16 @@ type JSON =
     | Number of string
     | Bool of bool
     | Null
+    override this.ToString() =
+        match this with
+        | Object xs ->
+            sprintf "{ %s ... }" (xs |> Map.toSeq |> Seq.truncate 2 |> Seq.map (fun (k, v) -> sprintf "\"%s\": %O" k v) |> String.concat ", ")
+        | Array xs ->
+            sprintf "[ %s ... ]" (xs |> List.truncate 2 |> List.map (fun x -> x.ToString()) |> String.concat ", ")
+        | String s -> "\"" + s + "\""
+        | Number n -> "'" + n + "'"
+        | Bool b -> if b then "True" else "False"
+        | Null -> "Null"
 
 module Json =
 
@@ -571,7 +581,7 @@ module Json =
             ctx.GetType().GetMethod(nameof ctx.GetBoxedCodec).MakeGenericMethod(ty).Invoke(ctx, [||])
             |> unbox<CachedCodec<obj>>
         
-        let record<'T>(ctx: Context) : CachedCodec<'T> =
+        let record<'T> (ctx: Context) : CachedCodec<'T> =
             let ty = typeof<'T>
 
             let fields = FSharpType.GetRecordFields ty
@@ -613,6 +623,67 @@ module Json =
                 Default = defaultFunc
             }
 
+        let union<'T> (ctx: Context) : CachedCodec<'T> =
+            let ty = typeof<'T>
+            let unionCases = FSharpType.GetUnionCases ty
+            let caseNames = unionCases |> Array.map (fun c -> c.Name)
+            let tagReader = FSharpValue.PreComputeUnionTagReader ty
+
+            let case (ci: UnionCaseInfo) : CachedCodec<'T> =
+                let fields = ci.GetFields()
+                let reader = FSharpValue.PreComputeUnionReader ci
+                let constructor = FSharpValue.PreComputeUnionConstructor ci
+                let codecs = fields |> Array.map (fun f -> boxed_codec (ctx, f.PropertyType))
+                
+                if fields.Length = 0 then
+                    {
+                        To = fun (x: 'T) -> JSON.String ci.Name
+                        From = fun _ _ -> constructor [||] :?> 'T
+                        Default = fun () -> constructor [||] :?> 'T
+                    }
+                elif fields.Length = 1 then
+                    {
+                        To = fun (x: 'T) -> 
+                            let inner = codecs.[0].To (reader x).[0]
+                            JSON.Object (Map.ofList [(ci.Name, inner)])
+                        From = fun (d: 'T) (json: JSON) -> 
+                            // todo: use the reader to provide defaults
+                            constructor [|codecs.[0].FromDefault json|] :?> 'T
+                        Default = fun () -> Array.map (fun cdc -> cdc.Default()) codecs |> constructor |> unbox<'T>
+                    }
+                else
+                    {
+                        To = fun (x: 'T) -> 
+                            let inner = reader x |> Array.map2 (fun cdc v -> cdc.To v) codecs |> List.ofArray |> JSON.Array
+                            JSON.Object (Map.ofList [(ci.Name, inner)])
+                        From = fun (d: 'T) (json: JSON) ->
+                            match json with
+                            | JSON.Array xs ->
+                                // todo: use the reader to provide defaults
+                                xs |> Array.ofList |> Array.map2 (fun (cdc: CachedCodec<obj>) v -> cdc.FromDefault v) codecs |> constructor |> unbox<'T>
+                            | _ -> failwithf "Expected nested JSON array with %i elements, got: %O" fields.Length json
+                        Default = fun () -> Array.map (fun cdc -> cdc.Default()) codecs |> constructor |> unbox<'T>
+                    }
+
+            let caseCodecs = unionCases |> Array.map case
+            {
+                To = fun (x: 'T) ->
+                    let i = tagReader x
+                    caseCodecs.[i].To x
+                From = fun (x: 'T) (json: JSON) ->
+                    match json with
+                    | JSON.Object xs ->
+                        let i = Array.IndexOf(caseNames, xs.Keys.First())
+                        if i < 0 then failwithf "Unrecognised case name: %s at: %O" (xs.Keys.First()) json
+                        caseCodecs.[i].From x (xs.Values.First())
+                    | JSON.String s ->
+                        let i = Array.IndexOf(caseNames, s)
+                        if i < 0 then failwithf "Unrecognised case name: %s at: %O" s json
+                        caseCodecs.[i].From x JSON.Null
+                    | _ -> failwithf "Expected a JSON object encoding union, got: %O" json
+                Default = caseCodecs.[0].Default
+            }
+
 open Json
 
 type Json(settings: Settings) as this =
@@ -643,6 +714,8 @@ type Json(settings: Settings) as this =
 
         if FSharpType.IsRecord ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
             AutoCodecs.record<'T> ctx
+        elif FSharpType.IsUnion ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
+            AutoCodecs.union<'T> ctx
         else
 
         let cdc = 
