@@ -10,7 +10,7 @@ type Record =
     }
     static member Default = { X = -1; Y = ["5"] }
 
-[<Json.AutoCodec(true)>]
+[<Json.AutoCodec>]
 type Union =
     | A
     | B of Record

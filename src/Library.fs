@@ -660,10 +660,13 @@ module Json =
                 let c_e = ctx.GetCodec<'E>()
                 fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default(), c_e.Default())
 
-
-    type AutoCodecAttribute(RequireAll: bool) =
+    type [<Sealed>] AutoCodecAttribute(RequireAll: bool) =
         inherit Attribute()
+        new() = AutoCodecAttribute(true)
         member this.RequireAll = RequireAll
+
+    type [<Sealed>] RequiredAttribute() = inherit Attribute()
+    type [<Sealed>] OptionalAttribute() = inherit Attribute()
 
     module AutoCodecs =
 
@@ -673,11 +676,17 @@ module Json =
             ctx.GetType().GetMethod(nameof ctx.GetBoxedCodec).MakeGenericMethod(ty).Invoke(ctx, [||])
             |> unbox<CachedCodec<obj>>
         
-        let record<'T> (ctx: Context) : CachedCodec<'T> =
+        let record<'T> (ctx: Context) (requireAll: bool) : CachedCodec<'T> =
             let ty = typeof<'T>
 
             let fields = FSharpType.GetRecordFields ty
             let fieldNames = fields |> Array.map (fun f -> f.Name)
+            let fieldRequired = 
+                fields
+                |> Array.map (fun f -> 
+                        if requireAll then f.GetCustomAttributes(typeof<OptionalAttribute>, false).Length = 0
+                        else f.GetCustomAttributes(typeof<RequiredAttribute>, false).Length > 0
+                    )
             let reader = FSharpValue.PreComputeRecordReader ty
             let constructor = FSharpValue.PreComputeRecordConstructor ty
             let codecs = fields |> Array.map (fun f -> boxed_codec (ctx, f.PropertyType))
@@ -709,6 +718,7 @@ module Json =
                         for i = 0 to fieldNames.Length - 1 do
                             if xs.ContainsKey(fieldNames.[i]) then
                                 values.[i] <- codecs.[i].From values.[i] xs.[fieldNames.[i]]
+                            elif fieldRequired.[i] then failwithf "Missing required value: %s, got: %O" fieldNames.[i] json
                         unbox<'T> (constructor values)
                     | _ -> failwithf "Expected a JSON object, got: %O" json
 
@@ -805,7 +815,7 @@ type Json(settings: Settings) as this =
         let ty = typeof<'T>
 
         if FSharpType.IsRecord ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
-            AutoCodecs.record<'T> ctx
+            AutoCodecs.record<'T> ctx (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
         elif FSharpType.IsUnion ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
             AutoCodecs.union<'T> ctx
         else
