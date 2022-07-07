@@ -26,7 +26,6 @@
 
   <ItemGroup>
     <PackageReference Include="FParsec" Version="1.1.1" />
-    <PackageReference Include="FSharp.TypeProviders.SDK" Version="7.0.3" />
     <PackageReference Include="TypeShape" Version="9.0.0" />
   </ItemGroup>
 

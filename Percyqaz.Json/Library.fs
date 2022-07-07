@@ -4,6 +4,7 @@ open System
 open System.Linq
 open System.Collections.Generic
 open System.Globalization
+open FSharp.Reflection
 
 [<RequireQualifiedAccess>]
 type JSON =
@@ -179,12 +180,15 @@ module Json =
     [<AbstractClass>]
     type Context(settings: Settings) =
         abstract member GetCodec<'T> : unit -> CachedCodec<'T>
+        abstract member GetBoxedCodec<'T> : unit -> CachedCodec<obj>
         member this.Settings = settings
     
     [<AbstractClass>]
     type Codec<'T>() =
         abstract member To : Context -> ('T -> JSON)
         abstract member From : Context -> ('T -> JSON -> 'T) // or throw exception
+        abstract member Default : Context -> (unit -> 'T)
+        default this.Default _ = fun () -> Unchecked.defaultof<'T>
 
     module Codecs =
 
@@ -342,6 +346,8 @@ module Json =
                 else fun _ json ->
                     match json with JSON.String s -> s | _ -> failwithf "Expected a JSON string, got: %O" json
 
+            override this.Default _ = fun _ -> String.Empty
+
         type Json() =
             inherit Codec<JSON>()
             override this.To _ = id
@@ -359,6 +365,8 @@ module Json =
                 match json with
                 | JSON.Array xs -> List.map cdc.FromDefault xs
                 | _ -> failwithf "Expected a JSON array, got: %O" json
+            
+            override this.Default _ = fun _ -> []
 
         type Array<'T>() =
             inherit Codec<'T array>()
@@ -372,6 +380,8 @@ module Json =
                 match json with
                 | JSON.Array xs -> List.map cdc.FromDefault xs |> Array.ofList
                 | _ -> failwithf "Expected a JSON array, got: %O" json
+
+            override this.Default _ = fun _ -> null
 
         type Dictionary<'K, 'V when 'K : comparison>() =
             inherit Codec<Collections.Generic.Dictionary<'K, 'V>>()
@@ -401,6 +411,8 @@ module Json =
                     for (k, v) in list_cdc.From (list_cdc.Default()) json do
                         dict.Add(k, v)
                     dict
+                
+            override this.Default _ = fun _ -> new Collections.Generic.Dictionary<'K, 'V>()
 
         type Map<'K, 'V when 'K : comparison and 'V : comparison>() =
             inherit Codec<Collections.Map<'K, 'V>>()
@@ -429,6 +441,8 @@ module Json =
                 | _ -> 
                     list_cdc.From (list_cdc.Default()) json |> Map.ofList
 
+            override this.Default _ = fun _ -> Map.empty
+
         type Option<'T>() =
             inherit Codec<'T option>()
             override this.To (ctx: Context) =
@@ -439,6 +453,8 @@ module Json =
                 let cdc = ctx.GetCodec<'T>()
                 fun existing json ->
                 match json with JSON.Null -> None | _ -> Some (cdc.From (existing |> Option.defaultWith cdc.Default) json)
+            
+            override this.Default _ = fun _ -> None
                 
         type ValueOption<'T>() =
             inherit Codec<'T voption>()
@@ -450,6 +466,8 @@ module Json =
                 let cdc = ctx.GetCodec<'T>()
                 fun existing json ->
                 match json with JSON.Null -> ValueNone | _ -> ValueSome (cdc.From (existing |> ValueOption.defaultWith cdc.Default) json)
+
+            override this.Default _ = fun _ -> ValueNone
 
         type Tuple2<'A, 'B>() =
             inherit Codec<'A * 'B>()
@@ -464,6 +482,10 @@ module Json =
                 match json with
                 | JSON.Array [a; b] -> (c_a.FromDefault a, c_b.FromDefault b)
                 | _ -> failwithf "Expected a JSON array with 2 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                fun _ -> (c_a.Default(), c_b.Default())
                 
         type Tuple3<'A, 'B, 'C>() =
             inherit Codec<'A * 'B * 'C>()
@@ -480,6 +502,11 @@ module Json =
                 match json with
                 | JSON.Array [a; b; c] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c)
                 | json -> failwithf "Expected a JSON array with 3 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default())
         
         type Tuple4<'A, 'B, 'C, 'D>() =
             inherit Codec<'A * 'B * 'C * 'D>()
@@ -498,6 +525,12 @@ module Json =
                 match json with
                 | JSON.Array [a; b; c; d] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d)
                 | json -> failwithf "Expected a JSON array with 4 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default())
         
         type Tuple5<'A, 'B, 'C, 'D, 'E>() =
             inherit Codec<'A * 'B * 'C * 'D * 'E>()
@@ -518,6 +551,13 @@ module Json =
                 match json with
                 | JSON.Array [a; b; c; d; e] -> (c_a.FromDefault a, c_b.FromDefault b, c_c.FromDefault c, c_d.FromDefault d, c_e.FromDefault e)
                 | json -> failwithf "Expected a JSON array with 5 elements, got: %O" json
+            override this.Default (ctx: Context) = 
+                let c_a = ctx.GetCodec<'A>()
+                let c_b = ctx.GetCodec<'B>()
+                let c_c = ctx.GetCodec<'C>()
+                let c_d = ctx.GetCodec<'D>()
+                let c_e = ctx.GetCodec<'E>()
+                fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default(), c_e.Default())
 
     type AutoCodecAttribute(RequireAll: bool) =
         inherit Attribute()
@@ -525,17 +565,54 @@ module Json =
 
     module AutoCodecs =
 
-        open FSharp.Reflection
+        type Default_Delegate<'T> = delegate of unit -> 'T
+
+        let boxed_codec(ctx: Context, ty: Type) =
+            ctx.GetType().GetMethod(nameof ctx.GetBoxedCodec).MakeGenericMethod(ty).Invoke(ctx, [||])
+            |> unbox<CachedCodec<obj>>
         
-        let record<'T>() : CachedCodec<'T> =
+        let record<'T>(ctx: Context) : CachedCodec<'T> =
             let ty = typeof<'T>
 
             let fields = FSharpType.GetRecordFields ty
             let fieldNames = fields |> Array.map (fun f -> f.Name)
             let reader = FSharpValue.PreComputeRecordReader ty
             let constructor = FSharpValue.PreComputeRecordConstructor ty
+            let codecs = fields |> Array.map (fun f -> boxed_codec (ctx, f.PropertyType))
+            let mi = ty.GetProperty("Default", typeof<'T>)
+            
+            let defaultFunc =
+                if isNull mi then
+                    let d = Default_Delegate<'T>(
+                        fun () -> 
+                            let vs = codecs |> Array.map (fun x -> x.Default())
+                            constructor vs |> unbox<'T>
+                        )
+                    fun () -> unbox<'T> (d.DynamicInvoke())
+                else 
+                    let d = Default_Delegate<'T>.CreateDelegate(typeof<Default_Delegate<'T>>, mi.GetMethod)
+                    fun () -> unbox<'T> (d.DynamicInvoke())
+                
+            {
+                To = fun record ->
+                    let values = reader record
+                    let mutable map = Map.empty
+                    for i = 0 to fieldNames.Length - 1 do
+                        map <- Map.add fieldNames.[i] (codecs.[i].To values.[i]) map
+                    JSON.Object map
 
-            failwith "nyi"
+                From = fun record json ->
+                    match json with
+                    | JSON.Object xs ->
+                        let values = reader record
+                        for i = 0 to fieldNames.Length - 1 do
+                            if xs.ContainsKey(fieldNames.[i]) then
+                                values.[i] <- codecs.[i].From values.[i] xs.[fieldNames.[i]]
+                        unbox<'T> (constructor values)
+                    | _ -> failwithf "Expected a JSON object, got: %O" json
+
+                Default = defaultFunc
+            }
 
 open Json
 
@@ -545,7 +622,8 @@ type Json(settings: Settings) as this =
     let cache = Dictionary<Type, obj>()
 
     let ctx = { new Context(settings) with
-        override _.GetCodec<'T>() = this.GetCodec<'T>() }
+        override _.GetCodec<'T>() = this.GetCodec<'T>()
+        override _.GetBoxedCodec<'T>() = this.GetBoxedCodec<'T>() }
 
     member this.WithCodec<'Codec>() = 
         let ty = typeof<'Codec>
@@ -563,6 +641,11 @@ type Json(settings: Settings) as this =
     member private this.GenCodec<'T>() : CachedCodec<'T> =
 
         let ty = typeof<'T>
+
+        if FSharpType.IsRecord ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
+            AutoCodecs.record<'T> ctx
+        else
+
         let cdc = 
             Seq.tryPick ( fun (candidate : Type) ->
 
@@ -602,7 +685,7 @@ type Json(settings: Settings) as this =
 
                 ) codecs
         match cdc with
-        | Some cdc -> { To = cdc.To ctx; From = cdc.From ctx; Default = fun () -> Unchecked.defaultof<_> }
+        | Some cdc -> { To = cdc.To ctx; From = cdc.From ctx; Default = cdc.Default ctx }
         | None -> failwithf "No codec found for type %O" ty
 
     member this.GetCodec<'T>() : CachedCodec<'T> =
@@ -613,3 +696,11 @@ type Json(settings: Settings) as this =
             let new_codec = this.GenCodec<'T>()
             cache.Add(ty, unbox new_codec)
             new_codec
+
+    member this.GetBoxedCodec<'T>() : CachedCodec<obj> =
+        let cdc = this.GetCodec<'T>()
+        {
+            To = unbox<'T> >> cdc.To
+            From = fun x json -> cdc.From (unbox<'T> x) json |> box
+            Default = cdc.Default >> box
+        }
