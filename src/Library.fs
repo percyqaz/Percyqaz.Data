@@ -338,6 +338,28 @@ module Json =
                     if ok then res else failwithf "Parse failure for Float64: %s" s
                 | _ -> failwithf "Expected a JSON number, got: %O" json
 
+        type Decimal() =
+            inherit Codec<decimal>()
+            override this.To (ctx: Context) =
+                (fun (d: decimal) -> d.ToString CultureInfo.InvariantCulture) >> JSON.Number
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
+                | JSON.String s | JSON.Number s -> 
+                    let ok, res = Decimal.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
+                    if ok then res else failwithf "Parse failure for Decimal: %s" s
+                | _ -> failwithf "Expected a JSON number, got: %O" json
+
+        type BigInt() =
+            inherit Codec<bigint>()
+            override this.To (ctx: Context) =
+                (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture)) >> JSON.Number
+            override this.From (ctx: Context) = fun _ json ->
+                match json with
+                | JSON.String s | JSON.Number s -> 
+                    let ok, res = Numerics.BigInteger.TryParse(s, NumberStyles.Any, CultureInfo.InvariantCulture)
+                    if ok then res else failwithf "Parse failure for BigInteger: %s" s
+                | _ -> failwithf "Expected a JSON number, got: %O" json
+
         type Char() =
             inherit Codec<char>()
             override this.To (ctx: Context) = string >> JSON.String
