@@ -7,7 +7,7 @@ open Percyqaz.Json
 open Helpers
 
 [<TestFixture>]
-type ``Primitive Round Trips``() =
+type ``1: Primitive Round Trips``() =
     
     let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
 
@@ -29,15 +29,27 @@ type ``Primitive Round Trips``() =
     [<Test>] member this.BigInt() = &[Numerics.BigInteger.MinusOne, 348957248912748912398729877918I]
 
     [<Test>] member this.Float32() = 
-                &[ 2.5f; Single.Epsilon; Single.MinValue; Single.MaxValue; 
+                &[ 2.5f; Single.Epsilon; Single.MinValue; Single.MaxValue
                    Single.NaN; Single.PositiveInfinity; Single.NegativeInfinity ]
     [<Test>] member this.Float64() = 
-                &[ -2.5; Double.Epsilon; Double.MinValue; Double.MaxValue; 
+                &[ -2.5; Double.Epsilon; Double.MinValue; Double.MaxValue
                    Double.NaN; Double.PositiveInfinity; Double.NegativeInfinity ]
     [<Test>] member this.Decimal() = &[6.9m; Decimal.MinValue; Decimal.MaxValue]
 
+    [<Test>] member this.DateTime() = 
+                &[ DateTime.Now; DateTime.Today; DateTime.UnixEpoch
+                   DateTime.MinValue; DateTime.MaxValue ]
+    [<Test>] member this.DateTimeOffset() = 
+                &[ DateTimeOffset.Now; DateTimeOffset.FromUnixTimeMilliseconds(5000L)
+                   DateTimeOffset.UnixEpoch; DateTimeOffset.MinValue; DateTimeOffset.MaxValue ]
+    [<Test>] member this.TimeSpan() = 
+                &[ TimeSpan.MaxValue; TimeSpan.MinValue; DateTime.Today - DateTime.Now; TimeSpan.Zero ]
+    
+    [<Test>] member this.Guid() = &[Guid.NewGuid(); Guid.NewGuid(); Guid.NewGuid(); Guid.Empty]
+    [<Test>] member this.Json() = &[JSON.String "Hello"; JSON.Null; JSON.Bool true]
+
 [<TestFixture>]
-type ``Compound Round Trips``() =
+type ``2: Compound Round Trips``() =
     
     let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
 
@@ -61,4 +73,20 @@ type ``Compound Round Trips``() =
 
     [<Test>] member this.ResizeArray() =
                 (List.ofSeq) ^& [ResizeArray([1; 2; 5; 25]); ResizeArray()]
+
+    [<Test>] member this.Dictionary_String_Keys() =
+                let d = Collections.Generic.Dictionary()
+                d.Add("Key1", 100.0)
+                d.Add("Key2", -57453.2789)
+
+                (Seq.map (|KeyValue|) >> List.ofSeq)
+                ^& [d; Collections.Generic.Dictionary()]
+                
+    [<Test>] member this.Dictionary_Object_Keys() =
+                let d = Collections.Generic.Dictionary()
+                d.Add([], 100.0)
+                d.Add([1], -57453.2789)
+                
+                (Seq.map (|KeyValue|) >> List.ofSeq)
+                ^& [d; Collections.Generic.Dictionary()]
 
