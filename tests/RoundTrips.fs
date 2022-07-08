@@ -42,6 +42,7 @@ type ``Compound Round Trips``() =
     let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
 
     let (~&) (xs: 'T list) = List.iter (round_trip env) xs
+    let (^&) (comp: 'T -> 'U) (xs: 'T list) = List.iter (round_trip_reftype env comp) xs
 
     [<Test>] member this.Option() = &[Some true; None]
     [<Test>] member this.VOption() = &[ValueSome "Hello"; ValueNone]
@@ -58,4 +59,6 @@ type ``Compound Round Trips``() =
     [<Test>] member this.Map_String_Keys() = &[Map.empty; Map.ofSeq ["Hello", 5; "World", -25]]
     [<Test>] member this.Map_Object_Keys() = &[Map.ofSeq [2, 5; 1, -25]; Map.empty]
 
+    [<Test>] member this.ResizeArray() =
+                (List.ofSeq) ^& [ResizeArray([1; 2; 5; 25]); ResizeArray()]
 

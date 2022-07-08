@@ -381,7 +381,7 @@ module Json =
             override this.Default _ = fun _ -> []
 
         type ResizeArray<'T>() =
-            inherit Codec<Collections.Generic.IList<'T>>()
+            inherit Codec<Collections.Generic.List<'T>>()
             override this.To (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
                 Seq.map cdc.To >> List.ofSeq >> JSON.Array
@@ -429,7 +429,7 @@ module Json =
             override this.Default _ = fun _ -> Set.empty
 
         type Dictionary<'K, 'V when 'K : comparison>() =
-            inherit Codec<Collections.Generic.IDictionary<'K, 'V>>()
+            inherit Codec<Collections.Generic.Dictionary<'K, 'V>>()
             override this.To (ctx: Context) =
                 if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> <> typeof<string> then
                     let cdc = ctx.GetCodec<'V>()
