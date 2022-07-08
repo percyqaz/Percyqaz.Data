@@ -15,7 +15,7 @@ Yet another JSON library, specificially for my F# JSON needs which were not met 
 
 ## Key design principles
 
-- No care for how the outputted JSON text is formatted
+- No care for how the outputted JSON text is formatted (validity is the only concern)
 - Null-safety: You can't deserialise JSON to get null for non-nullable F# objects etc
 - Support for all simple F# types out-of-box
 - Simple code: Exceptions are thrown internally instead of railroading/result types
