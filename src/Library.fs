@@ -380,11 +380,29 @@ module Json =
             
             override this.Default _ = fun _ -> []
 
+        type ResizeArray<'T>() =
+            inherit Codec<Collections.Generic.IList<'T>>()
+            override this.To (ctx: Context) =
+                let cdc = ctx.GetCodec<'T>()
+                Seq.map cdc.To >> List.ofSeq >> JSON.Array
+        
+            override this.From (ctx: Context) =
+                let cdc = ctx.GetCodec<'T>()
+                fun l json ->
+                match json with
+                | JSON.Array xs -> 
+                    l.Clear()
+                    for x in List.map cdc.FromDefault xs do l.Add x
+                    l
+                | _ -> failwithf "Expected a JSON array, got: %O" json
+
+            override this.Default _ = fun _ -> Collections.Generic.List<'T>()
+
         type Array<'T>() =
             inherit Codec<'T array>()
             override this.To (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                Array.map cdc.To >> List.ofArray >>JSON.Array
+                Array.map cdc.To >> List.ofArray >> JSON.Array
         
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
@@ -395,8 +413,23 @@ module Json =
 
             override this.Default _ = fun _ -> null
 
+        type Set<'T when 'T : comparison>() =
+            inherit Codec<Collections.Set<'T>>()
+            override this.To (ctx: Context) =
+                let cdc = ctx.GetCodec<'T>()
+                Seq.map cdc.To >> List.ofSeq >> JSON.Array
+
+            override this.From (ctx: Context) =
+                let cdc = ctx.GetCodec<'T>()
+                fun _ json ->
+                match json with
+                | JSON.Array xs -> List.map cdc.FromDefault xs |> set
+                | _ -> failwithf "Expected a JSON array, got: %O" json
+
+            override this.Default _ = fun _ -> Set.empty
+
         type Dictionary<'K, 'V when 'K : comparison>() =
-            inherit Codec<Collections.Generic.Dictionary<'K, 'V>>()
+            inherit Codec<Collections.Generic.IDictionary<'K, 'V>>()
             override this.To (ctx: Context) =
                 if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> <> typeof<string> then
                     let cdc = ctx.GetCodec<'V>()
@@ -416,6 +449,7 @@ module Json =
                 fun dict json ->
                 match json with
                 | JSON.Object xs when typeof<'K> = typeof<string> ->
+                    dict.Clear()
                     for (k, v) in xs |> Map.map (fun k v -> v_cdc.From (v_cdc.Default()) v) |> Map.toSeq do
                         dict.Add(unbox<'K> k, v)
                     dict
@@ -450,8 +484,7 @@ module Json =
                     Map.toSeq xs
                     |> Seq.map (fun (key, value) -> (unbox<'K> key, v_cdc.From (v_cdc.Default()) value))
                     |> Map.ofSeq
-                | _ -> 
-                    list_cdc.From (list_cdc.Default()) json |> Map.ofList
+                | _ -> list_cdc.From (list_cdc.Default()) json |> Map.ofList
 
             override this.Default _ = fun _ -> Map.empty
 
@@ -661,6 +694,55 @@ module Json =
                 let c_d = ctx.GetCodec<'D>()
                 let c_e = ctx.GetCodec<'E>()
                 fun _ -> (c_a.Default(), c_b.Default(), c_c.Default(), c_d.Default(), c_e.Default())
+
+        type Timespan() =
+            inherit Codec<TimeSpan>()
+            override this.To (ctx: Context) =
+                let cdc = ctx.GetCodec<int64>()
+                fun timespan -> cdc.To timespan.Ticks
+            override this.From (ctx: Context) =
+                let cdc = ctx.GetCodec<int64>()
+                fun _ json -> TimeSpan.FromTicks(cdc.FromDefault json)
+            override this.Default (ctx: Context) = fun _ -> TimeSpan.Zero
+
+        type Datetime() =
+            inherit Codec<DateTime>()
+            override this.To (ctx: Context) =
+                fun datetime -> datetime.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String
+            override this.From (ctx: Context) =
+                fun _ json ->
+                match json with
+                | JSON.String s ->
+                    let ok, res = DateTime.TryParseExact(s, [| "s"; "r"; "o"; "yyyy'-'MM'-'dd'T'HH':'mm':'ss.FFFFFFFK" |], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)
+                    if ok then res else failwithf "Unable to parse DateTime from string: %s, got: %O" s json
+                | _ -> failwithf "Expected a JSON string, got: %O" json
+            override this.Default (ctx: Context) = fun _ -> DateTime.MinValue
+
+        type DatetimeOffset() =
+            inherit Codec<DateTimeOffset>()
+            override this.To (ctx: Context) =
+                fun datetimeoffset -> datetimeoffset.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture) |> JSON.String
+            override this.From (ctx: Context) =
+                fun _ json ->
+                match json with
+                | JSON.String s ->
+                    let ok, res = DateTimeOffset.TryParseExact(s, [| "o"; "r"; "yyyy-MM-dd'T'HH:mm:ss.FFFFFFF'Z'" |], CultureInfo.InvariantCulture, DateTimeStyles.AssumeUniversal)
+                    if ok then res else failwithf "Unable to parse DateTime from string: %s, got: %O" s json
+                | _ -> failwithf "Expected a JSON string, got: %O" json
+            override this.Default (ctx: Context) = fun _ -> DateTimeOffset.MinValue
+
+        type Guid() =
+            inherit Codec<System.Guid>()
+            override this.To (ctx: Context) =
+                fun guid -> guid.ToString("N", CultureInfo.InvariantCulture) |> JSON.String
+            override this.From (ctx: Context) =
+                fun _ json ->
+                match json with
+                | JSON.String s -> 
+                    let ok, res = Guid.TryParse s
+                    if ok then res else failwithf "Unable to parse Guid from string: %s, got: %O" s json
+                | _ -> failwithf "Expected a JSON string, got: %O" json
+                
 
     type [<Sealed>] AutoCodecAttribute(RequireAll: bool) =
         inherit Attribute()
