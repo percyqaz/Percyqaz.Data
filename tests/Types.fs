@@ -20,11 +20,24 @@ type [<Struct>][<Json.AutoCodec>] StructUnion =
     | StOne of string
     | StMany of float list * char
 
-type [<Json.AutoCodec>] Record =
+type [<Json.AutoCodec(false)>] Record =
     {
         X: int64
         Y: float32
     }
+
+type [<Json.AutoCodec>] RecordNoDefaults =
+    {
+        X: int64
+        Y: float32
+    }
+
+type [<Json.AutoCodec(false)>] RecordWithDefault =
+    {
+        X: int64
+        Y: float32
+    }
+    static member Default = { X = 64L; Y = 0.3428972214f }
 
 type [<Struct>][<Json.AutoCodec>] StRecord =
     {

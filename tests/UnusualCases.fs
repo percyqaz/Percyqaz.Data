@@ -1,0 +1,27 @@
+﻿namespace Percyqaz.Json.Tests
+
+open System
+open NUnit.Framework
+open Percyqaz.Json
+
+open Helpers
+
+[<TestFixture>]
+type ``4: Unusual Deserialisation Cases``() =
+        
+    let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
+    
+    [<Test>] member this.Record_Defaults() =
+                match env.FromString<Record> "{}" with
+                | Ok v -> Assert.AreEqual(env.Default<Record>(), v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
+                
+                match env.FromString<RecordWithDefault> "{}" with
+                | Ok v -> Assert.AreEqual(env.Default<RecordWithDefault>(), v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
+
+    
+    [<Test>] member this.Record_RequiresMembers() =
+                match env.FromString<RecordNoDefaults> "{}" with
+                | Ok v -> Assert.Fail("Expected fail due to required members not being provided")
+                | Error err -> printfn "%O" err

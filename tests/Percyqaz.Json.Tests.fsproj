@@ -14,6 +14,8 @@
     <Compile Include="Helpers.fs" />
     <Compile Include="Types.fs" />
     <Compile Include="RoundTrips.fs" />
+    <Compile Include="Settings.fs" />
+    <Compile Include="UnusualCases.fs" />
   </ItemGroup>
 
   <ItemGroup>

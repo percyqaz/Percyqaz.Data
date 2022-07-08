@@ -429,14 +429,23 @@ module Json =
             inherit Codec<'T array>()
             override this.To (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                Array.map cdc.To >> List.ofArray >> JSON.Array
+                if ctx.Settings.AllowNullArrays then
+                    fun arr -> if isNull arr then JSON.Null else Array.map cdc.To arr |> List.ofArray |> JSON.Array
+                else Array.map cdc.To >> List.ofArray >> JSON.Array
         
             override this.From (ctx: Context) =
                 let cdc = ctx.GetCodec<'T>()
-                fun _ json ->
-                match json with
-                | JSON.Array xs -> List.map cdc.FromDefault xs |> Array.ofList
-                | _ -> failwithf "Expected a JSON array, got: %O" json
+                if ctx.Settings.AllowNullArrays then
+                    fun _ json ->
+                    match json with
+                    | JSON.Array xs -> List.map cdc.FromDefault xs |> Array.ofList
+                    | JSON.Null -> null
+                    | _ -> failwithf "Expected a JSON array or null, got: %O" json
+                else
+                    fun _ json ->
+                    match json with
+                    | JSON.Array xs -> List.map cdc.FromDefault xs |> Array.ofList
+                    | _ -> failwithf "Expected a JSON array, got: %O" json
 
             override this.Default _ = fun _ -> null
 
