@@ -36,6 +36,7 @@ module Json =
             AllowNullArrays: bool
 
             EncodeAllMapsAsArrays: bool
+            EncodeEnumsAsStrings: bool
         }
         static member Default =
             {
@@ -46,6 +47,7 @@ module Json =
                 AllowNullArrays = false
 
                 EncodeAllMapsAsArrays = false
+                EncodeEnumsAsStrings = true
             }
 
     module Parsing =
@@ -786,6 +788,38 @@ module Json =
                 Default = caseCodecs.[0].Default
             }
 
+        let enum<'T> (ctx: Context) : CachedCodec<'T> =
+            let ty = typeof<'T>
+            let underlying_ty = Enum.GetUnderlyingType ty
+            let cdc = boxed_codec (ctx, underlying_ty)
+
+            let default_value = ty.GetEnumValues().Cast<'T>().First()
+
+            if ctx.Settings.EncodeEnumsAsStrings then
+                {
+                    To = fun (x: 'T) -> 
+                        if Enum.IsDefined(ty, x) then JSON.String (x.ToString())
+                        else cdc.To x
+                    From = fun _ json ->
+                        match json with
+                        | JSON.String s -> 
+                            let ok, res = Enum.TryParse(ty, s)
+                            if ok then res :?> 'T else failwithf "Unrecognised enum name: %s at: %O" s json
+                        | _ -> cdc.FromDefault json :?> 'T
+                    Default = fun () -> default_value
+                }
+            else
+                {
+                    To = fun (x: 'T) -> cdc.To x
+                    From = fun _ json ->
+                        match json with
+                        | JSON.String s -> 
+                            let ok, res = Enum.TryParse(ty, s)
+                            if ok then res :?> 'T else failwithf "Unrecognised enum name: %s at: %O" s json
+                        | _ -> cdc.FromDefault json :?> 'T
+                    Default = fun () -> default_value
+                }
+
 open Json
 
 type Json(settings: Settings) as this =
@@ -818,6 +852,8 @@ type Json(settings: Settings) as this =
             AutoCodecs.record<'T> ctx (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
         elif FSharpType.IsUnion ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
             AutoCodecs.union<'T> ctx
+        elif ty.IsEnum then
+            AutoCodecs.enum<'T> ctx
         else
 
         let cdc = 
