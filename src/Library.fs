@@ -94,12 +94,13 @@ module Json =
 
     module Formatting =
 
-        open System.Text
+        open System.IO
 
-        let stringBuildJson expandObj expandArray json =
+        let private writeToStream (s: Stream) (expandObj: bool) (expandArray: bool) (json: JSON) =
 
-            let sb = new StringBuilder()
-            let append (x: string) = sb.Append x |> ignore
+            let tw = new StreamWriter(s)
+            let write (x: string) = tw.Write x
+            let writeSub (x: string) (start: int) (count: int) = tw.Write (x.Substring(start, count))
 
             let escapeChars =
                 [| '"'; '\\'; '\n'; '\r'; '\t'; '\b'; '\f'
@@ -120,70 +121,74 @@ module Json =
                 | '\u0019' -> @"\u0019" | '\u001A' -> @"\u001A" | '\u001B' -> @"\u001B" | '\u001C' -> @"\u001C" | '\u001D' -> @"\u001D"
                 | '\u001E' -> @"\u001E" | '\u001F' -> @"\u001F" | c -> @"\u" + (int c).ToString("X4", CultureInfo.InvariantCulture)
 
-            let appendSubstr (s: string) start count = sb.Append (s, start, count) |> ignore
-
             let writeString (cs: string) =
                 let rec escapeState index =
-                    append (escaped cs.[index])
+                    write (escaped cs.[index])
                     let nextIndex = index + 1
                     if nextIndex < cs.Length then
                         if isEscapeChar cs.[nextIndex] |> not then coreState nextIndex else escapeState nextIndex
                 and coreState index =
                     let nextEscapeIndex = cs.IndexOfAny(escapeChars, index)
                     if nextEscapeIndex = -1 then
-                        appendSubstr cs index (cs.Length - index)
+                        writeSub cs index (cs.Length - index)
                     else
-                        appendSubstr cs index (nextEscapeIndex - index)
+                        writeSub cs index (nextEscapeIndex - index)
                         escapeState nextEscapeIndex
                 coreState 0
 
             let mutable indent = 0
 
             let newline() =
-                append "\n"
-                append (String.replicate indent "    ")
+                write "\n"
+                write (String.replicate indent "    ")
 
-            let rec stringifyJson =
+            let rec writeJson =
                 function
-                | JSON.Null -> append "null"
-                | JSON.Bool x -> append (if x then "true" else "false")
-                | JSON.Number s -> append s
-                | JSON.String s -> append "\""; writeString s; append "\""
+                | JSON.Null -> write "null"
+                | JSON.Bool x -> write (if x then "true" else "false")
+                | JSON.Number s -> write s
+                | JSON.String s -> write "\""; writeString s; write "\""
                 | JSON.Array xs ->
                     let rec f xs =
                         match xs with
                         | [] -> ()
-                        | x :: [] -> stringifyJson x
-                        | x :: xs -> stringifyJson x; append ", "; (if expandArray then newline()); f xs
+                        | x :: [] -> writeJson x
+                        | x :: xs -> writeJson x; write ", "; (if expandArray then newline()); f xs
                     if expandArray then
-                        append "["
+                        write "["
                         indent <- indent + 1
                         newline()
                         f xs
                         indent <- indent - 1
                         newline()
-                        append "]"
-                    else append "["; f xs; append "]"
+                        write "]"
+                    else write "["; f xs; write "]"
                 | JSON.Object m ->
                     let rec f xs =
                         match xs with
                         | [] -> ()
-                        | (k, x) :: [] -> append "\""; writeString k; append "\": "; stringifyJson x
-                        | (k, x) :: xs -> append "\""; writeString k; append "\": "; stringifyJson x; append ", "; (if expandObj then newline()); f xs
+                        | (k, x) :: [] -> write "\""; writeString k; write "\": "; writeJson x
+                        | (k, x) :: xs -> write "\""; writeString k; write "\": "; writeJson x; write ", "; (if expandObj then newline()); f xs
                     if expandObj then
-                        append "{"
+                        write "{"
                         indent <- indent + 1
                         newline()
                         f (Map.toList m)
                         indent <- indent - 1
                         newline()
-                        append "}"
-                    else append "{"; f (Map.toList m); append "}"
+                        write "}"
+                    else write "{"; f (Map.toList m); write "}"
 
-            stringifyJson json
-            sb.ToString()
+            writeJson json
+            tw.Flush()
 
-        let formatJson (settings: Settings) json = stringBuildJson settings.FormatExpandObjects settings.FormatExpandArrays json
+        let formatJsonToStream (settings: Settings) (stream: Stream) (json: JSON) =
+            writeToStream stream settings.FormatExpandObjects settings.FormatExpandArrays json
+
+        let formatJsonString (settings: Settings) (json: JSON) = 
+            use ms = new MemoryStream()
+            writeToStream ms settings.FormatExpandObjects settings.FormatExpandArrays json
+            System.Text.Encoding.Default.GetString(ms.ToArray())
 
     type CachedCodec<'T> = 
         { To: 'T -> JSON; From: 'T -> JSON -> 'T; Default: unit -> 'T }
@@ -1004,11 +1009,11 @@ type Json(settings: Settings) as this =
 
     member this.ToJson (obj: 'T) = this.GetCodec<'T>().To obj
     
-    member this.ToString (obj: 'T) = obj |> this.ToJson |> Formatting.formatJson settings
+    member this.ToString (obj: 'T) = obj |> this.ToJson |> Formatting.formatJsonString settings
     
     member this.ToStream (stream: Stream) (obj: 'T) =
         use w = new StreamWriter(stream)
-        obj |> this.ToJson |> Formatting.formatJson settings |> w.Write
+        obj |> this.ToJson |> Formatting.formatJsonToStream settings stream
     
     member this.ToFile (path, overwrite) (obj: 'T) =
         if overwrite || not(File.Exists path) then
