@@ -903,6 +903,11 @@ module Json =
                 }
 
 open Json
+open System.IO
+
+exception ParseFailure of FParsec.Error.ParserError
+type ParserResult<'Result, 'UserState> = FParsec.CharParsers.ParserResult<'Result, 'UserState>
+type JsonResult<'T> = Result<'T, Exception>
 
 type Json(settings: Settings) as this =
         
@@ -996,3 +1001,46 @@ type Json(settings: Settings) as this =
             From = fun x json -> cdc.From (unbox<'T> x) json |> box
             Default = cdc.Default >> box
         }
+
+    member this.ToJson (obj: 'T) = this.GetCodec<'T>().To obj
+    
+    member this.ToString (obj: 'T) = obj |> this.ToJson |> Formatting.formatJson settings
+    
+    member this.ToStream (stream: Stream) (obj: 'T) =
+        use w = new StreamWriter(stream)
+        obj |> this.ToJson |> Formatting.formatJson settings |> w.Write
+    
+    member this.ToFile (path, overwrite) (obj: 'T) =
+        if overwrite || not(File.Exists path) then
+            use stream = File.Open(path, FileMode.CreateNew)
+            this.ToStream stream obj
+        else raise <| IOException "This file already exists!"
+    
+    member this.FromJson<'T> (json: JSON) : JsonResult<'T> = 
+        let cdc = this.GetCodec<'T>()
+        try 
+            Ok(cdc.FromDefault json)
+        with err ->
+            Error (exn("Error decoding json", err))
+            
+    member this.FromString<'T> (str: string) : JsonResult<'T> =
+        match Parsing.parseString str with
+        | ParserResult.Success (res, _, _) -> Ok(res)
+        | ParserResult.Failure (_, err, _) -> Error (exn("Error parsing json", ParseFailure err))
+        |> Result.bind this.FromJson<'T>
+    
+    member this.FromStream<'T> (nameOfStream, stream) =
+        match Parsing.parseStream nameOfStream stream with
+        | ParserResult.Success (res, _, _) -> Ok(res)
+        | ParserResult.Failure (_, err, _) -> Error (exn("Error parsing json", ParseFailure err))
+        |> Result.bind this.FromJson<'T>
+    
+    member this.FromFile<'T> (path: string) =
+        try Ok(Parsing.parseFile path)
+        with :? FileNotFoundException as err -> Error (exn("File not found", err))
+        |> Result.bind (function
+            | ParserResult.Success (res, _, _) -> Ok res
+            | ParserResult.Failure (_, err, _) -> Error (exn("Error parsing json", ParseFailure err)))
+        |> Result.bind this.FromJson<'T>
+    
+    member this.Default<'T>() : 'T = this.GetCodec<'T>().Default()
