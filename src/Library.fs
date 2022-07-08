@@ -995,9 +995,17 @@ type Json(settings: Settings) as this =
         if cache.ContainsKey ty then 
             unbox cache.[ty]
         else
-            let new_codec = this.GenCodec<'T>()
-            cache.Add(ty, unbox new_codec)
-            new_codec
+            let mutable codec = Unchecked.defaultof<_>
+            let delay : CachedCodec<'T> = 
+                { 
+                    To = fun x -> codec.To x
+                    From = fun x json -> codec.From x json
+                    Default = fun () -> codec.Default()
+                }
+            cache.Add(ty, unbox delay)
+            codec <- this.GenCodec<'T>()
+            ignore(cache.Remove ty); cache.Add(ty, unbox codec)
+            codec
 
     member this.GetBoxedCodec<'T>() : CachedCodec<obj> =
         let cdc = this.GetCodec<'T>()
