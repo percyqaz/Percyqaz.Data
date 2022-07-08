@@ -463,7 +463,7 @@ module Json =
         type Map<'K, 'V when 'K : comparison and 'V : comparison>() =
             inherit Codec<Collections.Map<'K, 'V>>()
             override this.To (ctx: Context) =
-                if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> <> typeof<string> then
+                if not ctx.Settings.EncodeAllMapsAsArrays && typeof<'K> = typeof<string> then
                     let cdc = ctx.GetCodec<'V>()
 
                     Map.toSeq

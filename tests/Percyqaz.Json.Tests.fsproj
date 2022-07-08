@@ -13,7 +13,7 @@
   <ItemGroup>
     <Compile Include="Helpers.fs" />
     <Compile Include="Types.fs" />
-    <Compile Include="Primitives.fs" />
+    <Compile Include="RoundTrips.fs" />
   </ItemGroup>
 
   <ItemGroup>

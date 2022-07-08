@@ -1,0 +1,61 @@
+﻿namespace Percyqaz.Json.Tests
+
+open System
+open NUnit.Framework
+open Percyqaz.Json
+
+open Helpers
+
+[<TestFixture>]
+type ``Primitive Round Trips``() =
+    
+    let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
+
+    let (~&) (xs: 'T list) = List.iter (round_trip env) xs
+
+    [<Test>] member this.Unit() = &[()]
+    [<Test>] member this.Bool() = &[true; false]
+    [<Test>] member this.String() = &[""; "Hello"; "\n§\r\t\\😋"]
+    [<Test>] member this.Char() = &[' '; '\n'; '§'; '\r']
+
+    [<Test>] member this.UInt8() = &[0uy; 65uy; 255uy]
+    [<Test>] member this.Int8() = &[0y; 65y; -127y]
+    [<Test>] member this.UInt16() = &[0us; 65us; 65535us]
+    [<Test>] member this.Int16() = &[0s; -32767s; 32767s]
+    [<Test>] member this.UInt32() = &[0u; 2378622171u]
+    [<Test>] member this.Int32() = &[0; Int32.MinValue; Int32.MaxValue]
+    [<Test>] member this.UInt64() = &[0UL; UInt64.MaxValue]
+    [<Test>] member this.Int64() = &[0L; Int64.MinValue; Int64.MaxValue]
+    [<Test>] member this.BigInt() = &[Numerics.BigInteger.MinusOne, 348957248912748912398729877918I]
+
+    [<Test>] member this.Float32() = 
+                &[ 2.5f; Single.Epsilon; Single.MinValue; Single.MaxValue; 
+                   Single.NaN; Single.PositiveInfinity; Single.NegativeInfinity ]
+    [<Test>] member this.Float64() = 
+                &[ -2.5; Double.Epsilon; Double.MinValue; Double.MaxValue; 
+                   Double.NaN; Double.PositiveInfinity; Double.NegativeInfinity ]
+    [<Test>] member this.Decimal() = &[6.9m; Decimal.MinValue; Decimal.MaxValue]
+
+[<TestFixture>]
+type ``Compound Round Trips``() =
+    
+    let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
+
+    let (~&) (xs: 'T list) = List.iter (round_trip env) xs
+
+    [<Test>] member this.Option() = &[Some true; None]
+    [<Test>] member this.VOption() = &[ValueSome "Hello"; ValueNone]
+    [<Test>] member this.Union() = &[Nil; One "Mind"; Many (Nil, [0.5; 0.4]); Many (Many (Nil, []), [])]
+    [<Test>] member this.StUnion() = &[StNil; StOne "Mind"; StMany ([6.0], '@')]
+    [<Test>] member this.Record() = &[{ Record.X = 5L; Y = 56.2f }]
+    [<Test>] member this.Record_Struct() = &[{ StRecord.X = 5L; Y = 56.2f }]
+    [<Test>] member this.Enum() = &[Enum.One; Enum.Two; LanguagePrimitives.EnumOfValue -127L; LanguagePrimitives.EnumOfValue 1000L]
+    [<Test>] member this.Tuple2() = &[("Hello", [6; 7; 8])]
+    [<Test>] member this.Tuple3_Struct() = &[struct ("Hello", (), [6, 7, 8])]
+    [<Test>] member this.List() = &[[1; 2]; []]
+    [<Test>] member this.Array() = &[[|1; 2|]; [||]]
+    [<Test>] member this.Set() = &[Set.empty; set [1; 5; 8; 10]]
+    [<Test>] member this.Map_String_Keys() = &[Map.empty; Map.ofSeq ["Hello", 5; "World", -25]]
+    [<Test>] member this.Map_Object_Keys() = &[Map.ofSeq [2, 5; 1, -25]; Map.empty]
+
+

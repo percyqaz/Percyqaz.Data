@@ -1,31 +1,38 @@
 ﻿namespace Percyqaz.Json.Tests
 
+open Percyqaz.Json
+
 type Tuple = int * string
 type StructTuple = (struct (bool * unit array))
 
-type Union =
-    | None
+type Enum =
+    | One = 1L
+    | Two = 2L
+    | Three = 3L
+
+type [<Json.AutoCodec>] Union =
+    | Nil
     | One of string
     | Many of Union * float list
 
-type [<Struct>] StructUnion =
-    | StNone
+type [<Struct>][<Json.AutoCodec>] StructUnion =
+    | StNil
     | StOne of string
     | StMany of float list * char
 
-type Record =
+type [<Json.AutoCodec>] Record =
     {
         X: int64
         Y: float32
     }
 
-type [<Struct>] StRecord =
+type [<Struct>][<Json.AutoCodec>] StRecord =
     {
         X: int64
         Y: float32
     }
 
-type RecordPrimitives =
+type [<Json.AutoCodec>] RecordPrimitives =
     {
         Reals: float * float32 * decimal
         ShortIntegers: int8 * uint8 * int16 * uint16
