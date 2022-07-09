@@ -1059,7 +1059,7 @@ type Json(settings: Settings) as this =
     
     member this.ToFile (path, overwrite) (obj: 'T) =
         if overwrite || not(File.Exists path) then
-            use stream = File.Open(path, FileMode.CreateNew)
+            use stream = File.Open(path, FileMode.Create)
             this.ToStream stream obj
         else raise <| IOException "This file already exists!"
     
