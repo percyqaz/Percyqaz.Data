@@ -16,6 +16,7 @@
     <Compile Include="RoundTrips.fs" />
     <Compile Include="Settings.fs" />
     <Compile Include="Scenarios.fs" />
+    <Compile Include="CustomCodecs.fs" />
   </ItemGroup>
 
   <ItemGroup>
