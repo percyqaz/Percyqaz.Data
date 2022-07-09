@@ -89,3 +89,5 @@ type ``2: Compound Round Trips``() =
                 
                 (Seq.map (|KeyValue|) >> List.ofSeq)
                 ^& [d; Collections.Generic.Dictionary()]
+    
+    [<Test>] member this.Record_Anonymous() = &[{| X = 5L; Y = 56.2f; Z = 32 |}]

@@ -971,8 +971,11 @@ type Json(settings: Settings) as this =
 
         let ty = typeof<'T>
 
-        if FSharpType.IsRecord ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
-            AutoCodecs.record<'T> ctx (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
+        if FSharpType.IsRecord ty && (ty.Name.Contains("<>f__AnonymousType") ||  ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0) then
+            let requireAll = 
+                ty.Name.Contains("<>f__AnonymousType") ||
+                (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
+            AutoCodecs.record<'T> ctx requireAll
         elif FSharpType.IsUnion ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
             AutoCodecs.union<'T> ctx
         elif ty.IsEnum then

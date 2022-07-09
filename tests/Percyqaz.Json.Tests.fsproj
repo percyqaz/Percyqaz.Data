@@ -8,6 +8,7 @@
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <Tailcalls>True</Tailcalls>
+    <Optimize>True</Optimize>
   </PropertyGroup>
 
   <ItemGroup>
