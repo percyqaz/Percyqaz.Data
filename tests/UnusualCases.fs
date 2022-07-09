@@ -20,8 +20,22 @@ type ``4: Unusual Deserialisation Cases``() =
                 | Ok v -> Assert.AreEqual(env.Default<RecordWithDefault>(), v)
                 | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
 
+    [<Test>] member this.Primitive_Defaults() =
+                match env.FromString<RecordPrimitives> "{}" with
+                | Ok v -> Assert.AreEqual(env.Default<RecordPrimitives>(), v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
     
     [<Test>] member this.Record_RequiresMembers() =
                 match env.FromString<RecordNoDefaults> "{}" with
                 | Ok v -> Assert.Fail("Expected fail due to required members not being provided")
                 | Error err -> printfn "%O" err
+
+    [<Test>] member this.Enum_NamedValue() =
+                match env.FromString<Tests.Enum> "1" with
+                | Ok v -> Assert.AreEqual(Enum.One, v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
+    
+    [<Test>] member this.Char_FirstLetterOfString() =
+                match env.FromString<char> "\"Hello world\"" with
+                | Ok v -> Assert.AreEqual('H', v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)

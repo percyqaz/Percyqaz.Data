@@ -45,7 +45,7 @@ type [<Struct>][<Json.AutoCodec>] StRecord =
         Y: float32
     }
 
-type [<Json.AutoCodec>] RecordPrimitives =
+type [<Json.AutoCodec(false)>] RecordPrimitives =
     {
         Reals: float * float32 * decimal
         ShortIntegers: int8 * uint8 * int16 * uint16
