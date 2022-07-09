@@ -25,4 +25,8 @@ Yet another JSON library, specificially for my F# JSON needs which were not met 
 
 You can get this package on [NuGet](https://www.nuget.org/packages/Percyqaz.Json/)
 
+**DOCUMENTATION IS CURRENTLY OUTDATED FOR VERSION 3.0**
+
+**IM LAZY AND ALSO NOBODY IS ACTIVELY USING THIS SO NOT A PRIORITY**
+
 You should read [the documentation here](https://github.com/percyqaz/Percyqaz.Json/wiki) (it's not long)
