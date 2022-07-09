@@ -1,8 +1,18 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net6.0</TargetFramework>
+    <TargetFramework>netstandard2.1</TargetFramework>
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
+    <GeneratePackageOnBuild>True</GeneratePackageOnBuild>
+    <Authors>Percyqaz</Authors>
+    <PackageProjectUrl>https://github.com/percyqaz/Percyqaz.Json</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/percyqaz/Percyqaz.Json</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
+    <Optimize>True</Optimize>
+    <Tailcalls>True</Tailcalls>
   </PropertyGroup>
 
   <ItemGroup>

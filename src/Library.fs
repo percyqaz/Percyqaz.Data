@@ -994,7 +994,7 @@ type Json(settings: Settings) as this =
                         let i = Array.IndexOf(type_arguments, source)
                         type_arguments.[i] <- target
                         true
-                    elif source.IsAssignableTo target then 
+                    elif target.IsAssignableFrom source then 
                         true
                     else
                     
