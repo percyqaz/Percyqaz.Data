@@ -7,7 +7,7 @@ open Percyqaz.Json
 open Helpers
 
 [<TestFixture>]
-type ``4: Unusual Deserialisation Cases``() =
+type ``4: Special Deserialisation Scenarios``() =
         
     let env = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
     
@@ -18,6 +18,11 @@ type ``4: Unusual Deserialisation Cases``() =
                 
                 match env.FromString<RecordWithDefault> "{}" with
                 | Ok v -> Assert.AreEqual(env.Default<RecordWithDefault>(), v)
+                | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
+
+    [<Test>] member this.Record_Partial() =
+                match env.FromString<RecordWithDefault> "{\"X\": 99}" with
+                | Ok v -> Assert.AreEqual({ RecordWithDefault.Default with X = 99L }, v)
                 | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
 
     [<Test>] member this.Primitive_Defaults() =

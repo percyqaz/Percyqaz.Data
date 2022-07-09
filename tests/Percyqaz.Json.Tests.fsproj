@@ -15,7 +15,7 @@
     <Compile Include="Types.fs" />
     <Compile Include="RoundTrips.fs" />
     <Compile Include="Settings.fs" />
-    <Compile Include="UnusualCases.fs" />
+    <Compile Include="Scenarios.fs" />
   </ItemGroup>
 
   <ItemGroup>
