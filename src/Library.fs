@@ -1026,6 +1026,9 @@ type Json(settings: Settings) as this =
 
     member this.GetCodec<'T>() : CachedCodec<'T> =
         let ty = typeof<'T>
+
+        lock (cache) (fun () -> 
+
         if cache.ContainsKey ty then 
             unbox cache.[ty]
         else
@@ -1039,7 +1042,7 @@ type Json(settings: Settings) as this =
             cache.Add(ty, unbox delay)
             codec <- this.GenCodec<'T>()
             ignore(cache.Remove ty); cache.Add(ty, unbox codec)
-            codec
+            codec )
 
     member this.GetBoxedCodec<'T>() : CachedCodec<obj> =
         let cdc = this.GetCodec<'T>()
