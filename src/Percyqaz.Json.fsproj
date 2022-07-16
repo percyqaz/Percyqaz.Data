@@ -8,7 +8,7 @@
     <PackageProjectUrl>https://github.com/percyqaz/Percyqaz.Json</PackageProjectUrl>
     <RepositoryUrl>https://github.com/percyqaz/Percyqaz.Json</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
-    <Version>3.0.2</Version>
+    <Version>3.1.0</Version>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
