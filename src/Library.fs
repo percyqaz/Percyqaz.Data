@@ -949,6 +949,7 @@ type Json(settings: Settings) as this =
         
     let codecs = ResizeArray<Type>()
     let cache = Dictionary<Type, obj>()
+    let autocodecs = Dictionary<Type, bool>()
 
     let ctx = { new Context(settings) with
         override _.GetCodec<'T>() = this.GetCodec<'T>()
@@ -961,6 +962,10 @@ type Json(settings: Settings) as this =
             codecs.Add ty; this
         else failwithf "Type %O must be assignable from Codec<>" ty
 
+    member this.WithAutoCodec<'T>(requireAll: bool) =
+        autocodecs.TryAdd(typeof<'T>, requireAll) |> ignore; this
+    member this.WithAutoCodec<'T>() = this.WithAutoCodec<'T>(true)
+
     member this.WithDefaults() =
         let codecs_module = typeof<Codecs.Unit>.DeclaringType
         for ty in codecs_module.GetNestedTypes() do
@@ -971,15 +976,24 @@ type Json(settings: Settings) as this =
 
         let ty = typeof<'T>
 
-        if FSharpType.IsRecord ty && (ty.Name.Contains("<>f__AnonymousType") ||  ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0) then
-            let requireAll = 
-                ty.Name.Contains("<>f__AnonymousType") ||
-                (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
-            AutoCodecs.record<'T> ctx requireAll
+        if FSharpType.IsRecord ty && ty.Name.Contains("<>f__AnonymousType") then
+            AutoCodecs.record<'T> ctx true
+
+        elif FSharpType.IsRecord ty && autocodecs.ContainsKey ty then
+            AutoCodecs.record<'T> ctx autocodecs.[ty]
+
+        elif FSharpType.IsRecord ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
+            AutoCodecs.record<'T> ctx (ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).First() :?> AutoCodecAttribute).RequireAll
+
+        elif FSharpType.IsUnion ty && autocodecs.ContainsKey ty then
+            AutoCodecs.union<'T> ctx
+
         elif FSharpType.IsUnion ty && ty.GetCustomAttributes(typeof<AutoCodecAttribute>, false).Length > 0 then
             AutoCodecs.union<'T> ctx
+
         elif ty.IsEnum then
             AutoCodecs.enum<'T> ctx
+
         else
 
         let cdc = 

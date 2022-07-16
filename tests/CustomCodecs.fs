@@ -40,6 +40,12 @@ type FloatOverride() =
     override this.Default (ctx: Json.Context) =
         fun () -> printfn "Calling custom float default"; -1.0
 
+type ExternalRecord =
+    { A: int; B: int } with static member Default = { A = 10; B = 20 }
+
+type ExternalUnion =
+    | A of int | B of int
+
 [<TestFixture>]
 type ``5: Custom Codec Implementations``() =
         
@@ -48,6 +54,8 @@ type ``5: Custom Codec Implementations``() =
             .WithCodec<FloatOverride>()
             .WithDefaults()
             .WithCodec<SettingCodec>()
+            .WithAutoCodec<ExternalUnion>()
+            .WithAutoCodec<ExternalRecord>(false)
 
     [<Test>]
     member this.SettingCustomCodec() =
@@ -58,3 +66,11 @@ type ``5: Custom Codec Implementations``() =
     [<Test>]
     member this.FloatCustomCodec() =
         Assert.AreEqual(-1.0, env.Default<float>())
+
+    [<Test>]
+    member this.ExternalRecordAutoCodec() =
+        Helpers.round_trip env { ExternalRecord.Default with A = 100 }
+    
+    [<Test>]
+    member this.ExternalUnionAutoCodec() =
+        Helpers.round_trip env (B 100)

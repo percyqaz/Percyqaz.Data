@@ -44,3 +44,14 @@ type ``4: Special Deserialisation Scenarios``() =
                 match env.FromString<char> "\"Hello world\"" with
                 | Ok v -> Assert.AreEqual('H', v)
                 | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
+
+    [<Test>] member this.Concurrency() =
+                let random = new Random()
+                seq {
+                    for i = 1 to 25 do
+                        yield async { for j = 1 to 100 do round_trip env (random.NextDouble()) }
+                }
+                |> Async.Parallel
+                |> Async.Ignore
+                |> Async.RunSynchronously
+                Assert.Pass()
