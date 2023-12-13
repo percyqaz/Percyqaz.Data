@@ -1,35 +1,39 @@
 ﻿open Percyqaz.Data.Sqlite
 
-let connectionString = "Data Source=database.db"
-
 type User = { Id: int; Username: string; DateLastSeen: int64 }
 
-let USER_TABLE =
-    {
-        Name = "users"
-        PrimaryKey = Column.Integer("Id").Unique
-        Columns = 
-            [
-                Column.Text("Username").Unique
-                Column.Integer("DateLastSeen").Nullable
-            ]
-    }
+module Users =
+    let ID = Column.Integer("Id").Unique
+    let USERNAME = Column.Text("Username").Unique
+    let DATE_LAST_SEEN = Column.Integer("DateLastSeen").Nullable
 
-let db = Database.connect connectionString
+    let TABLE =
+        {
+            Name = "users"
+            PrimaryKey = ID
+            Columns = 
+                [
+                    USERNAME
+                    DATE_LAST_SEEN
+                ]
+        }
+
+let db = Database.from_file "example.sqlite"
+
 db
-|> Database.drop_table_if_exists USER_TABLE
+|> Database.drop_table_if_exists Users.TABLE
 |> printfn "%A"
 
 db
-|> Database.create_table USER_TABLE
+|> Database.create_table Users.TABLE
 |> printfn "%A"
 
 db
-|> Database.exec "INSERT INTO [users] (Username, DateLastSeen) VALUES ( 'Percyqaz', '29/05/2000' );"
+|> Database.exec_with_parameters Users.TABLE.InsertCommandTemplate (fun p -> p.Add(Users.USERNAME, "Percyqaz").Add(Users.DATE_LAST_SEEN, "01/12/2000") )
 |> printfn "%A"
 
 db
-|> Database.exec "INSERT INTO [users] (Username, DateLastSeen) VALUES ( 'Percyqaz', '29/05/2000' );"
+|> Database.exec_with_parameters Users.TABLE.InsertCommandTemplate (fun p -> p.Add(Users.USERNAME, "Umisen_Yamasen").Add(Users.DATE_LAST_SEEN, "01/12/2000") )
 |> printfn "%A"
 
 let reader =
