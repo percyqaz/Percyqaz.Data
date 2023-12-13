@@ -27,7 +27,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\src\Percyqaz.Json.fsproj" />
+    <ProjectReference Include="..\src\Percyqaz.Data.fsproj" />
   </ItemGroup>
 
   <ItemGroup>

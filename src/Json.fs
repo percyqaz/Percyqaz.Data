@@ -1,4 +1,4 @@
-﻿namespace Percyqaz.Json
+﻿namespace Percyqaz.Data
 
 open System
 open System.Linq
