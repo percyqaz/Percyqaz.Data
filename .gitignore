@@ -2,13 +2,6 @@
 # This .gitignore file was automatically created by Microsoft(R) Visual Studio.
 ################################################################################
 
-/src/bin
-/src/obj
-/tests/bin
-/tests/obj
-/.vs
-/Percyqaz.Json.v1/bin
-/Percyqaz.Json.v1/obj
-/Percyqaz.Json.v1.Tests/bin
-/Percyqaz.Json.v1.Tests/obj
-/Percyqaz.Json.v1.Tests/.vs/Percyqaz.Json.v1.Tests/v17
+**/.vs
+**/bin
+**/obj
