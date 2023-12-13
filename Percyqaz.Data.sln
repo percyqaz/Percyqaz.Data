@@ -3,11 +3,11 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.31903.59
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Percyqaz.Json", "src\Percyqaz.Json.fsproj", "{220D8220-509C-43FF-85E7-7353E80285B2}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Percyqaz.Data", "src\Percyqaz.Data.fsproj", "{220D8220-509C-43FF-85E7-7353E80285B2}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Percyqaz.Json.Tests", "tests\Percyqaz.Json.Tests.fsproj", "{BBA1F790-B7D8-456C-B1CD-EBDE02EF45A3}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Percyqaz.Data.Tests", "tests\Percyqaz.Data.Tests.fsproj", "{BBA1F790-B7D8-456C-B1CD-EBDE02EF45A3}"
 EndProject
-Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "SqliteTest", "Sqlite\SqliteTest.fsproj", "{276DBD72-A4F7-438B-8777-CD81C3F6CB8C}"
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "Percyqaz.Data.Playground", "playground\Percyqaz.Data.Playground.fsproj", "{276DBD72-A4F7-438B-8777-CD81C3F6CB8C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

@@ -17,11 +17,14 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Markdown.fs" />
+    <Compile Include="SQLite.fs" />
     <Compile Include="Json.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="FParsec" Version="1.1.1" />
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="8.0.0" />
   </ItemGroup>
 
   <ItemGroup>
