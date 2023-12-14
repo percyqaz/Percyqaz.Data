@@ -17,9 +17,9 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Markdown.fs" />
-    <Compile Include="SQLite.fs" />
     <Compile Include="Json.fs" />
+    <Compile Include="SQLite.fs" />
+    <Compile Include="Markdown.fs" />
   </ItemGroup>
 
   <ItemGroup>
