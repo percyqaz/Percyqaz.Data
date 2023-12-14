@@ -72,7 +72,48 @@ type Table =
                 (this.PrimaryKey :: this.Columns |> Seq.map _.Name |> String.concat ", ")
                 (this.PrimaryKey :: this.Columns |> Seq.map (fun c -> sprintf "@%s" c.Name) |> String.concat ", ")
 
-    member this.SelectAllCommand = sprintf "SELECT * FROM [%s]" this.Name
+    member this.Select([<ParamArray>] columns: Column array) =
+        {
+            Table = this
+            Columns = columns |> Array.map (fun c -> sprintf "[%s]" c.Name) |> List.ofArray
+            Filter = None
+            Order = None
+            Group = None
+            Page = None
+        }
+
+    member this.SelectAll = this.Select(this.PrimaryKey :: this.Columns |> Array.ofList)
+
+and SelectQuery =
+    {
+        Table: Table
+        Columns: string list
+        Filter: string option
+        Group: string option
+        Order: (string * bool) option
+        Page: (int * int) option
+    }
+    member this.Column (id: string) = { this with Columns = this.Columns @ [id] }
+    member this.Where (id: string) = 
+        if this.Filter.IsSome then failwithf "Already filtering by %A" this.Filter.Value
+        { this with Filter = Some id }
+    member this.GroupBy (col: Column) = 
+        if this.Group.IsSome then failwithf "Already grouping by %A" this.Group.Value
+        { this with Group = Some col.Name }
+    member this.OrderBy (col: Column, desc: bool) =
+        if this.Order.IsSome then failwithf "Already ordering by %A" this.Order.Value
+        { this with Order = Some (col.Name, desc) }
+    member this.Limit (count: int, page: int) = { this with Page = Some (count, page) }
+    member this.Limit (count: int) = this.Limit (count, 0)
+
+    member this.Command =
+        sprintf "SELECT %s\nFROM [%s]%s%s%s%s;" 
+            (String.concat ", " this.Columns)
+            this.Table.Name
+            (match this.Filter with Some s -> sprintf "\nWHERE %s" s | None -> "")
+            (match this.Group with Some s -> sprintf "\nGROUP BY %s" s | None -> "")
+            (match this.Order with Some (s, desc) -> sprintf "\nORDER BY %s %s" s (if desc then "DESC" else "ASC") | None -> "")
+            (match this.Page with Some (count, page) -> sprintf "\nLIMIT %i OFFSET %i" count (count * page) | None -> "")
 
 type CommandParameterHelper(parameters: SqliteParameterCollection) =
     
@@ -143,10 +184,10 @@ module Database =
             
     // todo: batch exec that uses c.Prepare()
 
-    let exec_with_parameters (command: string) (add_parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) =
+    let exec_with_parameters (command: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) =
         let c = db.Connection.CreateCommand()
         c.CommandText <- command
-        add_parameters <| CommandParameterHelper(c.Parameters) |> ignore
+        parameters <| CommandParameterHelper(c.Parameters) |> ignore
         try
             c.ExecuteNonQuery() |> Ok
         with :? SqliteException as e ->
@@ -154,10 +195,10 @@ module Database =
 
     let exec (command: string) (db: Database) = exec_with_parameters command id db
 
-    let query_with_parameters<'T> (query: string) (add_parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> =
+    let exec_query_with_parameters<'T> (query: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> =
         let c = db.Connection.CreateCommand()
         c.CommandText <- query
-        add_parameters <| CommandParameterHelper(c.Parameters) |> ignore
+        parameters <| CommandParameterHelper(c.Parameters) |> ignore
         try
             let sql_reader = c.ExecuteReader()
             let reader = RowReaderHelper(sql_reader)
@@ -169,7 +210,7 @@ module Database =
         with :? SqliteException as e ->
             Error e.Message
 
-    let query (query: string) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> = query_with_parameters query id read db
+    let exec_query (query: string) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> = exec_query_with_parameters query id read db
 
     let create_table (table: Table) (db: Database) =
         exec (table.CreateCommand false) db
@@ -179,7 +220,8 @@ module Database =
     let drop_table_if_exists (table: Table) (db: Database) = exec (table.DropCommand true) db
 
     let insert (table: Table) (row: CommandParameterHelper -> CommandParameterHelper) (db: Database) = exec_with_parameters table.InsertCommandTemplate row db
-    let select_all<'T> (table: Table) (read: RowReaderHelper -> 'T) (db: Database) = query table.SelectAllCommand read db
+    let select_all<'T> (table: Table) (read: RowReaderHelper -> 'T) (db: Database) = exec_query table.SelectAll.Command read db
+    let select<'T> (query: SelectQuery) (parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) = exec_query_with_parameters query.Command parameters read db
     
     let private init (db: Database) =
         exec "PRAGMA encoding = 'UTF-8'" db |> function Ok _ -> () | Error e -> failwithf "Unexpected error %s" e
