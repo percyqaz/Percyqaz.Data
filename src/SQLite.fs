@@ -1,12 +1,13 @@
 ﻿namespace Percyqaz.Data.Sqlite
 
+open System
 open Microsoft.Data.Sqlite
+open Percyqaz.Data
 
 type ColumnType =
     | INTEGER
     | TEXT
     | REAL
-    | NUMERIC
     | BLOB
 
 type Column =
@@ -24,7 +25,6 @@ type Column =
     static member Integer(name: string) = { ColumnType = INTEGER; Name = name; IsNullable = false; IsUnique = false; }
     static member Real(name: string) = { ColumnType = REAL; Name = name; IsNullable = false; IsUnique = false; }
     static member Blob(name: string) = { ColumnType = BLOB; Name = name; IsNullable = false; IsUnique = false; }
-    static member Numeric(name: string) = { ColumnType = NUMERIC; Name = name; IsNullable = false; IsUnique = false; }
 
 type Table =
     {
@@ -72,12 +72,67 @@ type Table =
                 (this.PrimaryKey :: this.Columns |> Seq.map _.Name |> String.concat ", ")
                 (this.PrimaryKey :: this.Columns |> Seq.map (fun c -> sprintf "@%s" c.Name) |> String.concat ", ")
 
+    member this.SelectAllCommand = sprintf "SELECT * FROM [%s]" this.Name
+
 type CommandParameterHelper(parameters: SqliteParameterCollection) =
     
+    member this.Add(col: Column, value: 'T option) =
+        match value with
+        | Some v -> this.Add(col, v)
+        | None -> parameters.AddWithValue(col.Name, DBNull.Value) |> ignore; this
+
     member this.Add(col: Column, value: obj) =
         parameters.AddWithValue(col.Name, value) |> ignore
         this
 
+type RowReaderHelper(reader: SqliteDataReader) =
+    let mutable col = -1
+
+    member this.Next() =
+        assert(col < 0 || col + 1 = reader.FieldCount)
+        col <- -1
+
+    member private this.Column =
+        col <- col + 1
+        col
+
+    member inline private this.Option<'T> (method: int -> 'T) = 
+        let c = this.Column
+        if reader.IsDBNull c then None 
+        else Some (method c)
+    
+    member this.Boolean = reader.GetBoolean this.Column
+    member this.BooleanOption = this.Option reader.GetBoolean
+
+    member this.Int8 = reader.GetByte this.Column
+    member this.Int8Option = this.Option reader.GetByte
+
+    member this.Int16 = reader.GetInt16 this.Column
+    member this.Int16Option = this.Option reader.GetInt16
+
+    member this.Int32 = reader.GetInt32 this.Column
+    member this.Int32Option = this.Option reader.GetInt32
+    
+    member this.Int64 = reader.GetInt64 this.Column
+    member this.Int64Option = this.Option reader.GetInt64
+    
+    member this.Float32 = reader.GetFloat this.Column
+    member this.Float32Option = this.Option reader.GetFloat
+
+    member this.Float64 = reader.GetDouble this.Column
+    member this.Float64Option = this.Option reader.GetDouble
+
+    member this.Decimal = reader.GetDecimal this.Column
+    member this.DecimalOption = this.Option reader.GetDecimal
+
+    member this.String = reader.GetString this.Column
+    member this.StringOption = this.Option reader.GetString
+    
+    member this.Stream = reader.GetStream this.Column
+    member this.StreamOption = this.Option reader.GetStream
+    
+    member this.Json<'T>(json: Json) = json.FromStream ("sqlite", reader.GetStream this.Column)
+        
 type Database =
     {
         ConnectionString: string
@@ -85,17 +140,10 @@ type Database =
     }
 
 module Database =
-
-    let from_file(path: string) =
-        let connection_string = sprintf "Data Source=%s" path
-        let conn = new SqliteConnection(connection_string)
-        conn.Open()
-        {
-            ConnectionString = connection_string
-            Connection = conn // todo: reopen connection to db when needed
-        }
             
-    let exec_with_parameters (command: string) (add_parameters: CommandParameterHelper -> 'T) (db: Database) =
+    // todo: batch exec that uses c.Prepare()
+
+    let exec_with_parameters (command: string) (add_parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) =
         let c = db.Connection.CreateCommand()
         c.CommandText <- command
         add_parameters <| CommandParameterHelper(c.Parameters) |> ignore
@@ -104,21 +152,44 @@ module Database =
         with :? SqliteException as e ->
             Error e.Message
 
-    let exec (command: string) (db: Database) = exec_with_parameters command ignore db
+    let exec (command: string) (db: Database) = exec_with_parameters command id db
 
-    let query_with_parameters (query: string) (add_parameters: CommandParameterHelper -> 'T) (db: Database) : Result<SqliteDataReader, string> =
+    let query_with_parameters<'T> (query: string) (add_parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> =
         let c = db.Connection.CreateCommand()
         c.CommandText <- query
         add_parameters <| CommandParameterHelper(c.Parameters) |> ignore
         try
-            c.ExecuteReader() |> Ok
+            let sql_reader = c.ExecuteReader()
+            let reader = RowReaderHelper(sql_reader)
+            seq {
+                while (sql_reader.Read()) do
+                    yield read reader
+                    reader.Next()
+            } |> Ok
         with :? SqliteException as e ->
             Error e.Message
 
-    let query (query: string) (db: Database) = query_with_parameters query ignore db
+    let query (query: string) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> = query_with_parameters query id read db
 
-    let create_table (table: Table) (db: Database) = exec (table.CreateCommand false) db
+    let create_table (table: Table) (db: Database) =
+        exec (table.CreateCommand false) db
     let create_table_if_not_exists (table: Table) (db: Database) = exec (table.CreateCommand true) db
 
     let drop_table (table: Table) (db: Database) = exec (table.DropCommand false) db
     let drop_table_if_exists (table: Table) (db: Database) = exec (table.DropCommand true) db
+
+    let insert (table: Table) (row: CommandParameterHelper -> CommandParameterHelper) (db: Database) = exec_with_parameters table.InsertCommandTemplate row db
+    let select_all<'T> (table: Table) (read: RowReaderHelper -> 'T) (db: Database) = query table.SelectAllCommand read db
+    
+    let private init (db: Database) =
+        exec "PRAGMA encoding = 'UTF-8'" db |> function Ok _ -> () | Error e -> failwithf "Unexpected error %s" e
+        db
+    
+    let from_file(path: string) =
+        let connection_string = sprintf "Data Source=%s" path
+        let conn = new SqliteConnection(connection_string)
+        conn.Open()
+        {
+            ConnectionString = connection_string
+            Connection = conn // todo: reopen connection to db when needed
+        } |> init

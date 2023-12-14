@@ -1,6 +1,6 @@
 ﻿open Percyqaz.Data.Sqlite
 
-type User = { Id: int; Username: string; DateLastSeen: int64 }
+type User = { Username: string; DateLastSeen: int64 option }
 
 module Users =
     let ID = Column.Integer("Id").Unique
@@ -18,6 +18,18 @@ module Users =
                 ]
         }
 
+    let to_row (user: User) =
+        fun (p: CommandParameterHelper) -> 
+            p
+                .Add(USERNAME, user.Username)
+                .Add(DATE_LAST_SEEN, user.DateLastSeen)
+
+    let from_row (read: RowReaderHelper) =
+        {
+            Username = read.String
+            DateLastSeen = read.Int64Option
+        }
+
 let db = Database.from_file "example.sqlite"
 
 db
@@ -29,19 +41,13 @@ db
 |> printfn "%A"
 
 db
-|> Database.exec_with_parameters Users.TABLE.InsertCommandTemplate (fun p -> p.Add(Users.USERNAME, "Percyqaz").Add(Users.DATE_LAST_SEEN, "01/12/2000") )
+|> Database.insert Users.TABLE (Users.to_row { Username = "Percyqaz"; DateLastSeen = None })
 |> printfn "%A"
 
 db
-|> Database.exec_with_parameters Users.TABLE.InsertCommandTemplate (fun p -> p.Add(Users.USERNAME, "Umisen_Yamasen").Add(Users.DATE_LAST_SEEN, "01/12/2000") )
+|> Database.insert Users.TABLE (Users.to_row { Username = "Umisen_Yamasen"; DateLastSeen = Some System.DateTime.UtcNow.Ticks })
 |> printfn "%A"
 
-let reader =
-    db
-    |> Database.query "SELECT * from [users]"
-    |> Result.toOption
-    |> Option.get
-
-while reader.Read() do
-    for i in 0 .. reader.FieldCount - 1 do
-        printfn "%A" reader.[i]
+db
+|> Database.select_all Users.TABLE (fun row -> row.Int64, Users.from_row row)
+|> printfn "%A"
