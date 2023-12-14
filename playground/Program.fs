@@ -40,14 +40,23 @@ db
 |> Database.create_table Users.TABLE
 |> printfn "%A"
 
+for i = 0 to 9999 do
+    db
+    |> Database.insert Users.TABLE (Users.to_row { Username = sprintf "User_%i" i; DateLastSeen = Some <| System.Random().NextInt64() })
+    |> printfn "%A"
+
 db
 |> Database.insert Users.TABLE (Users.to_row { Username = "Percyqaz"; DateLastSeen = None })
 |> printfn "%A"
 
 db
-|> Database.insert Users.TABLE (Users.to_row { Username = "Umisen_Yamasen"; DateLastSeen = Some System.DateTime.UtcNow.Ticks })
+|> Database.select_all Users.TABLE (fun row -> row.Int64, Users.from_row row)
 |> printfn "%A"
 
 db
-|> Database.select_all Users.TABLE (fun row -> row.Int64, Users.from_row row)
+|> Database.select
+    (Users.TABLE.Select(Users.ID, Users.USERNAME, Users.DATE_LAST_SEEN).OrderBy(Users.DATE_LAST_SEEN, true).Limit(10))
+    id
+    (fun row -> row.Int64, row.String, row.Int64Option)
+|> Result.map (List.ofSeq)
 |> printfn "%A"
