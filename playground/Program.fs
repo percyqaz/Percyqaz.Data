@@ -40,10 +40,14 @@ db
 |> Database.create_table Users.TABLE
 |> printfn "%A"
 
-for i = 0 to 9999 do
-    db
-    |> Database.insert Users.TABLE (Users.to_row { Username = sprintf "User_%i" i; DateLastSeen = Some <| System.Random().NextInt64() })
-    |> printfn "%A"
+let users_to_add =
+    seq {
+        for i = 0 to 9999 do
+            yield { Username = sprintf "User_%i" i; DateLastSeen = Some <| System.Random().NextInt64() }
+    }
+db
+|> Database.batch Users.TABLE.InsertCommandTemplate users_to_add Users.to_row
+|> printfn "%A"
 
 db
 |> Database.insert Users.TABLE (Users.to_row { Username = "Percyqaz"; DateLastSeen = None })
