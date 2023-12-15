@@ -120,10 +120,10 @@ type CommandParameterHelper(parameters: SqliteParameterCollection) =
     member this.Add(col: Column, value: 'T option) =
         match value with
         | Some v -> this.Add(col, v)
-        | None -> parameters.AddWithValue(col.Name, DBNull.Value) |> ignore; this
+        | None -> parameters.AddWithValue("@" + col.Name, DBNull.Value) |> ignore; this
 
     member this.Add(col: Column, value: obj) =
-        parameters.AddWithValue(col.Name, value) |> ignore
+        parameters.AddWithValue("@" + col.Name, value) |> ignore
         this
 
 type RowReaderHelper(reader: SqliteDataReader) =
@@ -181,10 +181,8 @@ type Database =
     }
 
 module Database =
-            
-    // todo: batch exec that uses c.Prepare()
 
-    let exec_with_parameters (command: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) =
+    let exec_with_parameters (command: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) : Result<int, string> =
         let c = db.Connection.CreateCommand()
         c.CommandText <- command
         parameters <| CommandParameterHelper(c.Parameters) |> ignore
@@ -207,6 +205,28 @@ module Database =
                     yield read reader
                     reader.Next()
             } |> Ok
+        with :? SqliteException as e ->
+            Error e.Message
+
+    let batch (command: string) (items: 'T seq) (parameters: 'T -> CommandParameterHelper -> CommandParameterHelper) (db: Database) : Result<int, string> =
+        if Seq.isEmpty items then Ok 0 else
+
+        use transaction = db.Connection.BeginTransaction()
+
+        let cmd = db.Connection.CreateCommand()
+        cmd.CommandText <- command
+
+        let helper = CommandParameterHelper(cmd.Parameters)
+        parameters (Seq.head items) helper |> ignore
+        cmd.Prepare()
+
+        let mutable affected_rows = 0
+        try
+            for item in items do
+                parameters item (CommandParameterHelper(cmd.Parameters)) |> ignore
+                affected_rows <- affected_rows + cmd.ExecuteNonQuery()
+            transaction.Commit()
+            Ok affected_rows
         with :? SqliteException as e ->
             Error e.Message
 
