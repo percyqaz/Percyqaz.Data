@@ -2,35 +2,88 @@
 
 type User = { Username: string; DateLastSeen: int64 option }
 
+let db = Database.from_file "example.sqlite"
+
 module Users =
-    let ID = Column.Integer("Id").Unique
-    let USERNAME = Column.Text("Username").Unique
-    let DATE_LAST_SEEN = Column.Integer("DateLastSeen").Nullable
 
     let TABLE =
         {
             Name = "users"
-            PrimaryKey = ID
+            PrimaryKey = Column.Integer("Id").Unique
             Columns = 
                 [
-                    USERNAME
-                    DATE_LAST_SEEN
+                    Column.Text("Username").Unique
+                    Column.Integer("DateLastSeen").Nullable
                 ]
         }
 
-    let to_row (user: User) =
-        fun (p: CommandParameterHelper) -> 
-            p
-                .Add(USERNAME, user.Username)
-                .Add(DATE_LAST_SEEN, user.DateLastSeen)
-
-    let from_row (read: RowReaderHelper) =
+    let ALL : Query<unit, int64 * User> = 
         {
-            Username = read.String
-            DateLastSeen = read.Int64Option
+            SQL = """
+            SELECT [Id], [Username], [DateLastSeen]
+            FROM [users];
+            """
+            Parameters = []
+            FillParameters = fun _ _ -> ()
+            Read = (fun (read: RowReaderHelper) ->
+                read.Int64,
+                {
+                    Username = read.String
+                    DateLastSeen = read.Int64Option
+                }
+            )
         }
 
-let db = Database.from_file "example.sqlite"
+    let BY_ID : Query<int64, User> = 
+        {
+            SQL = """
+            SELECT [Username], [DateLastSeen]
+            FROM [users] 
+            WHERE [id] = @Id;
+            """
+            Parameters = ["@Id", SqliteType.Integer, 8]
+            FillParameters = (fun (p: CommandParameterHelper) (id: int64) ->
+                p.Add id
+            )
+            Read = (fun (read: RowReaderHelper) ->
+                {
+                    Username = read.String
+                    DateLastSeen = read.Int64Option
+                }
+            )
+        }
+
+    let INSERT : NonQuery<User> = 
+        {
+            SQL = """
+            INSERT INTO [users] (Username, DateLastSeen)
+            VALUES ( @Username, @DateLastSeen );
+            """
+            Parameters = ["@Username", SqliteType.Text, 255; "@DateLastSeen", SqliteType.Integer, 255]
+            FillParameters = (fun (p: CommandParameterHelper) (user: User) -> 
+                p.Add user.Username
+                p.Option user.DateLastSeen
+            )
+        }
+    
+    let RECENTLY_SEEN : Query<unit, int64 * User> = 
+        {
+            SQL = """
+            SELECT [Id], [Username], [DateLastSeen]
+            FROM [users]
+            ORDER BY [DateLastSeen] DESC
+            LIMIT 10;
+            """
+            Parameters = []
+            FillParameters = fun _ _ -> ()
+            Read = (fun (read: RowReaderHelper) ->
+                read.Int64,
+                {
+                    Username = read.String
+                    DateLastSeen = read.Int64Option
+                }
+            )
+        }
 
 db
 |> Database.drop_table_if_exists Users.TABLE
@@ -40,27 +93,22 @@ db
 |> Database.create_table Users.TABLE
 |> printfn "%A"
 
+Users.INSERT.ExecuteGetId { Username = "Percyqaz"; DateLastSeen = None } db
+|> printfn "%A"
+
+Users.BY_ID.Execute 1L db
+|> printfn "%A"
+
 let users_to_add =
     seq {
         for i = 0 to 9999 do
             yield { Username = sprintf "User_%i" i; DateLastSeen = Some <| System.Random().NextInt64() }
     }
-db
-|> Database.batch Users.TABLE.InsertCommandTemplate users_to_add Users.to_row
+Users.INSERT.Batch users_to_add db
 |> printfn "%A"
 
-db
-|> Database.insert Users.TABLE (Users.to_row { Username = "Percyqaz"; DateLastSeen = None })
+Users.RECENTLY_SEEN.Execute () db
 |> printfn "%A"
 
-db
-|> Database.select_all Users.TABLE (fun row -> row.Int64, Users.from_row row)
-|> printfn "%A"
-
-db
-|> Database.select
-    (Users.TABLE.Select(Users.ID, Users.USERNAME, Users.DATE_LAST_SEEN).OrderBy(Users.DATE_LAST_SEEN, true).Limit(10))
-    id
-    (fun row -> row.Int64, row.String, row.Int64Option)
-|> Result.map (List.ofSeq)
+Users.ALL.Execute () db
 |> printfn "%A"

@@ -4,15 +4,11 @@ open System
 open Microsoft.Data.Sqlite
 open Percyqaz.Data
 
-type ColumnType =
-    | INTEGER
-    | TEXT
-    | REAL
-    | BLOB
+type SqliteType = Microsoft.Data.Sqlite.SqliteType
 
 type Column =
     {
-        ColumnType: ColumnType
+        ColumnType: SqliteType
         Name: string
         IsNullable: bool
         /// for INTEGER PRIMARY KEYs, this represents AUTOINCREMENT
@@ -21,10 +17,10 @@ type Column =
     member this.Unique = { this with IsUnique = true }
     member this.Nullable = { this with IsNullable = true }
 
-    static member Text(name: string) = { ColumnType = TEXT; Name = name; IsNullable = false; IsUnique = false; }
-    static member Integer(name: string) = { ColumnType = INTEGER; Name = name; IsNullable = false; IsUnique = false; }
-    static member Real(name: string) = { ColumnType = REAL; Name = name; IsNullable = false; IsUnique = false; }
-    static member Blob(name: string) = { ColumnType = BLOB; Name = name; IsNullable = false; IsUnique = false; }
+    static member Text(name: string) = { ColumnType = SqliteType.Text; Name = name; IsNullable = false; IsUnique = false; }
+    static member Integer(name: string) = { ColumnType = SqliteType.Integer; Name = name; IsNullable = false; IsUnique = false; }
+    static member Real(name: string) = { ColumnType = SqliteType.Real; Name = name; IsNullable = false; IsUnique = false; }
+    static member Blob(name: string) = { ColumnType = SqliteType.Blob; Name = name; IsNullable = false; IsUnique = false; }
 
 type Table =
     {
@@ -32,21 +28,21 @@ type Table =
         PrimaryKey: Column
         Columns: Column list
     }
-    member this.PrimaryKeyIsInteger = this.PrimaryKey.ColumnType = INTEGER
+    member this.PrimaryKeyIsInteger = this.PrimaryKey.ColumnType = SqliteType.Integer
 
     member this.CreateCommand (if_not_exists: bool) =
         let pk = 
-            sprintf "%s %A PRIMARY KEY%s%s" 
+            sprintf "%s %s PRIMARY KEY%s%s" 
                 this.PrimaryKey.Name
-                this.PrimaryKey.ColumnType
+                (this.PrimaryKey.ColumnType.ToString().ToUpper())
                 (if this.PrimaryKey.IsUnique then assert(this.PrimaryKeyIsInteger); " AUTOINCREMENT" else "")
                 (if this.PrimaryKey.IsNullable then "" else " NOT NULL")
         let cols =
             this.Columns 
             |> Seq.map (fun c ->
-                sprintf "%s %A%s%s" 
+                sprintf "%s %s%s%s" 
                     c.Name
-                    c.ColumnType
+                    (c.ColumnType.ToString().ToUpper())
                     (if c.IsUnique then " UNIQUE" else "")
                     (if c.IsNullable then "" else " NOT NULL")
             )
@@ -115,16 +111,27 @@ and SelectQuery =
             (match this.Order with Some (s, desc) -> sprintf "\nORDER BY %s %s" s (if desc then "DESC" else "ASC") | None -> "")
             (match this.Page with Some (count, page) -> sprintf "\nLIMIT %i OFFSET %i" count (count * page) | None -> "")
 
-type CommandParameterHelper(parameters: SqliteParameterCollection) =
-    
-    member this.Add(col: Column, value: 'T option) =
-        match value with
-        | Some v -> this.Add(col, v)
-        | None -> parameters.AddWithValue("@" + col.Name, DBNull.Value) |> ignore; this
+type CommandParameterHelper(count: int, parameters: SqliteParameterCollection) =
+    let mutable col = -1
 
-    member this.Add(col: Column, value: obj) =
-        parameters.AddWithValue("@" + col.Name, value) |> ignore
-        this
+    member private this.Column =
+        col <- col + 1
+        col
+
+    member this.Next() =
+        assert(col + 1 = count)
+        col <- -1
+
+    member this.Option(value: 'T option) =
+        match value with
+        | Some v -> this.Add(v)
+        | None -> this.Null()
+        
+    member this.Null() =
+        parameters.[this.Column].Value <- DBNull.Value
+
+    member this.Add(value: obj) =
+        parameters.[this.Column].Value <- value
 
 type RowReaderHelper(reader: SqliteDataReader) =
     let mutable col = -1
@@ -177,81 +184,145 @@ type RowReaderHelper(reader: SqliteDataReader) =
 type Database =
     {
         ConnectionString: string
-        Connection: SqliteConnection
+        mutable Connection: SqliteConnection option
     }
+    member this.Connect() =
+        match this.Connection with
+        | None ->
+            let connection = new SqliteConnection(this.ConnectionString)
+            connection.Open()
+            this.Connection <- Some connection
+            connection
+        | Some connection ->
+            if not (connection.State.HasFlag Data.ConnectionState.Open) then
+                printfn "%A" connection.State
+                connection.Open()
+            connection
 
-module Database =
+type Query<'Parameters, 'Result> =
+    {
+        SQL: string
+        Parameters: (string * SqliteType * int) list
+        FillParameters: CommandParameterHelper -> 'Parameters -> unit
+        Read: RowReaderHelper -> 'Result
+    }
+    member this.CreateParameters(command: SqliteCommand) =
+        for p, ty, size in this.Parameters do
+            command.Parameters.Add(new SqliteParameter(p, ty, size)) |> ignore
 
-    let exec_with_parameters (command: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (db: Database) : Result<int, string> =
-        let c = db.Connection.CreateCommand()
-        c.CommandText <- command
-        parameters <| CommandParameterHelper(c.Parameters) |> ignore
+type NonQuery<'Parameters> = 
+    {
+        SQL: string
+        Parameters: (string * SqliteType * int) list
+        FillParameters: CommandParameterHelper -> 'Parameters -> unit
+    }
+    member this.CreateParameters(command: SqliteCommand) =
+        for p, ty, size in this.Parameters do
+            command.Parameters.Add(new SqliteParameter(p, ty, size)) |> ignore
+
+module Query =
+
+    let exec (query: Query<'Parameter, 'Result>) (value: 'Parameter) (db: Database) : Result<'Result seq, string> =
+        let command = new SqliteCommand(query.SQL, db.Connect())
+        query.CreateParameters command
+
+        let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
+        query.FillParameters helper value
+        helper.Next()
+
         try
-            c.ExecuteNonQuery() |> Ok
-        with :? SqliteException as e ->
-            Error e.Message
-
-    let exec (command: string) (db: Database) = exec_with_parameters command id db
-
-    let exec_query_with_parameters<'T> (query: string) (parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> =
-        let c = db.Connection.CreateCommand()
-        c.CommandText <- query
-        parameters <| CommandParameterHelper(c.Parameters) |> ignore
-        try
-            let sql_reader = c.ExecuteReader()
+            let sql_reader = command.ExecuteReader()
             let reader = RowReaderHelper(sql_reader)
             seq {
-                while (sql_reader.Read()) do
-                    yield read reader
+                while sql_reader.Read() do
+                    yield query.Read reader
                     reader.Next()
             } |> Ok
         with :? SqliteException as e ->
             Error e.Message
 
-    let batch (command: string) (items: 'T seq) (parameters: 'T -> CommandParameterHelper -> CommandParameterHelper) (db: Database) : Result<int, string> =
-        if Seq.isEmpty items then Ok 0 else
+module NonQuery =
 
-        use transaction = db.Connection.BeginTransaction()
+    let exec (query: NonQuery<'Parameter>) (value: 'Parameter) (db: Database) : Result<int, string> =
+        let command = new SqliteCommand(query.SQL, db.Connect())
+        query.CreateParameters command
 
-        let cmd = db.Connection.CreateCommand()
-        cmd.CommandText <- command
+        let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
+        query.FillParameters helper value
+        helper.Next()
 
-        let helper = CommandParameterHelper(cmd.Parameters)
-        parameters (Seq.head items) helper |> ignore
-        cmd.Prepare()
+        try
+            command.ExecuteNonQuery() |> Ok
+        with :? SqliteException as e ->
+            Error e.Message
+            
+    let exec_with_id (query: NonQuery<'Parameter>) (value: 'Parameter) (db: Database) : Result<int64, string> =
+        let command = new SqliteCommand(query.SQL + " SELECT last_insert_rowid();", db.Connect())
+        query.CreateParameters command
+            
+        let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
+        query.FillParameters helper value
+        helper.Next()
+            
+        try
+            command.ExecuteScalar() |> unbox |> Ok
+        with :? SqliteException as e ->
+            Error e.Message
+
+    let batch (query: NonQuery<'Parameter>) (values: 'Parameter seq) (db: Database) : Result<int, string> =
+        if Seq.isEmpty values then Ok 0 else
+
+        let connection = db.Connect()
+        use transaction = connection.BeginTransaction()
+        let command = new SqliteCommand(query.SQL, connection, transaction)
+        query.CreateParameters command
+        command.Prepare()
 
         let mutable affected_rows = 0
+        let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
         try
-            for item in items do
-                parameters item (CommandParameterHelper(cmd.Parameters)) |> ignore
-                affected_rows <- affected_rows + cmd.ExecuteNonQuery()
+            for value in values do
+                
+                query.FillParameters helper value
+                helper.Next()
+                affected_rows <- affected_rows + command.ExecuteNonQuery()
             transaction.Commit()
             Ok affected_rows
         with :? SqliteException as e ->
             Error e.Message
 
-    let exec_query (query: string) (read: RowReaderHelper -> 'T) (db: Database) : Result<'T seq, string> = exec_query_with_parameters query id read db
+module Database =
 
-    let create_table (table: Table) (db: Database) =
-        exec (table.CreateCommand false) db
-    let create_table_if_not_exists (table: Table) (db: Database) = exec (table.CreateCommand true) db
+    let exec_raw (sql: string) (db: Database) : Result<int, string> =
+        let command = db.Connect().CreateCommand()
+        command.CommandText <- sql
+        try
+            command.ExecuteNonQuery() |> Ok
+        with :? SqliteException as e ->
+            Error e.Message
 
-    let drop_table (table: Table) (db: Database) = exec (table.DropCommand false) db
-    let drop_table_if_exists (table: Table) (db: Database) = exec (table.DropCommand true) db
+    let create_table (table: Table) (db: Database) = exec_raw (table.CreateCommand false) db
+    let create_table_if_not_exists (table: Table) (db: Database) = exec_raw (table.CreateCommand true) db
 
-    let insert (table: Table) (row: CommandParameterHelper -> CommandParameterHelper) (db: Database) = exec_with_parameters table.InsertCommandTemplate row db
-    let select_all<'T> (table: Table) (read: RowReaderHelper -> 'T) (db: Database) = exec_query table.SelectAll.Command read db
-    let select<'T> (query: SelectQuery) (parameters: CommandParameterHelper -> CommandParameterHelper) (read: RowReaderHelper -> 'T) (db: Database) = exec_query_with_parameters query.Command parameters read db
-    
+    let drop_table (table: Table) (db: Database) = exec_raw (table.DropCommand false) db
+    let drop_table_if_exists (table: Table) (db: Database) = exec_raw (table.DropCommand true) db
+
     let private init (db: Database) =
-        exec "PRAGMA encoding = 'UTF-8'" db |> function Ok _ -> () | Error e -> failwithf "Unexpected error %s" e
+        exec_raw "PRAGMA encoding = 'UTF-8'" db 
+        |> function Ok _ -> () | Error e -> failwithf "Unexpected error %s" e
         db
     
     let from_file(path: string) =
         let connection_string = sprintf "Data Source=%s" path
-        let conn = new SqliteConnection(connection_string)
-        conn.Open()
         {
             ConnectionString = connection_string
-            Connection = conn // todo: reopen connection to db when needed
+            Connection = None
         } |> init
+
+type Query<'P,'R> with 
+    member this.Execute (value: 'P) (db: Database) = Query.exec this value db
+
+type NonQuery<'P> with 
+    member this.Execute (value: 'P) (db: Database) = NonQuery.exec this value db
+    member this.ExecuteGetId (value: 'P) (db: Database) = NonQuery.exec_with_id this value db
+    member this.Batch (values: 'P seq) (db: Database) = NonQuery.batch this values db
