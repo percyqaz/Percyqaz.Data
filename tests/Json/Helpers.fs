@@ -1,6 +1,6 @@
-﻿namespace Percyqaz.Json.Tests
+﻿namespace Percyqaz.Data.Tests.Json
 
-open Percyqaz.Json
+open Percyqaz.Data
 open NUnit.Framework
 
 module Helpers =

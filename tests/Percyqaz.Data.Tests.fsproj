@@ -12,12 +12,14 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="Helpers.fs" />
-    <Compile Include="Types.fs" />
-    <Compile Include="RoundTrips.fs" />
-    <Compile Include="Settings.fs" />
-    <Compile Include="Scenarios.fs" />
-    <Compile Include="CustomCodecs.fs" />
+    <Compile Include="Sqlite\Helpers.fs" />
+    <Compile Include="Sqlite\Basic.fs" />
+    <Compile Include="Json\Helpers.fs" />
+    <Compile Include="Json\Types.fs" />
+    <Compile Include="Json\RoundTrips.fs" />
+    <Compile Include="Json\Settings.fs" />
+    <Compile Include="Json\Scenarios.fs" />
+    <Compile Include="Json\CustomCodecs.fs" />
   </ItemGroup>
 
   <ItemGroup>

@@ -18,7 +18,7 @@
 
   <ItemGroup>
     <Compile Include="Json.fs" />
-    <Compile Include="SQLite.fs" />
+    <Compile Include="Sqlite.fs" />
     <Compile Include="Markdown.fs" />
   </ItemGroup>
 
