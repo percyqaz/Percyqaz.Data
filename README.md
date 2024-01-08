@@ -1,3 +1,9 @@
+# Percyqaz.Data
+Has expanded from its original purpose from a JSON mapping library, so I've updated the name to Percyqaz.Data  
+I am too lazy to update documentation right now (given that only my projects depend on this), but below is the README from a couple years ago
+
+----
+
 # Percyqaz.Json
 
 Yet another JSON library, specificially for my F# JSON needs which were not met by JSON.Net or Chiron
@@ -29,4 +35,4 @@ You can get this package on [NuGet](https://www.nuget.org/packages/Percyqaz.Json
 
 **IM LAZY AND ALSO NOBODY IS ACTIVELY USING THIS SO NOT A PRIORITY**
 
-You should read [the documentation here](https://github.com/percyqaz/Percyqaz.Json/wiki) (it's not long)
+You should read [the documentation here](https://github.com/percyqaz/Percyqaz.Data/wiki) (it's not long)
