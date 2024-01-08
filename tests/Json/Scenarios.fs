@@ -1,8 +1,8 @@
-﻿namespace Percyqaz.Json.Tests
+﻿namespace Percyqaz.Data.Tests.Json
 
 open System
 open NUnit.Framework
-open Percyqaz.Json
+open Percyqaz.Data
 
 open Helpers
 
@@ -36,7 +36,7 @@ type ``4: Special Deserialisation Scenarios``() =
                 | Error err -> printfn "%O" err
 
     [<Test>] member this.Enum_NamedValue() =
-                match env.FromString<Tests.Enum> "1" with
+                match env.FromString<Tests.Json.Enum> "1" with
                 | Ok v -> Assert.AreEqual(Enum.One, v)
                 | Error err -> Assert.Fail(sprintf "Unexpected error while converting from string: %O" err)
     

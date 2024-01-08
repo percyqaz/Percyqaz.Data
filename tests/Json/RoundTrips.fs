@@ -1,8 +1,8 @@
-﻿namespace Percyqaz.Json.Tests
+﻿namespace Percyqaz.Data.Tests.Json
 
 open System
 open NUnit.Framework
-open Percyqaz.Json
+open Percyqaz.Data
 
 open Helpers
 

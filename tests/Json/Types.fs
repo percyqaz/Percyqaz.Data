@@ -1,6 +1,6 @@
-﻿namespace Percyqaz.Json.Tests
+﻿namespace Percyqaz.Data.Tests.Json
 
-open Percyqaz.Json
+open Percyqaz.Data
 
 type Tuple = int * string
 type StructTuple = (struct (bool * unit array))
