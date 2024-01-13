@@ -249,6 +249,8 @@ module Sqlite =
         let batch (query: NonQuery<'Parameter>) (values: 'Parameter seq) (db: Database) : Result<int, string> =
             if Seq.isEmpty values then Ok 0 else
 
+            lock db <| fun () ->
+
             let connection = db.Connect()
             use transaction = connection.BeginTransaction()
             let command = new SqliteCommand(query.SQL, connection, transaction)

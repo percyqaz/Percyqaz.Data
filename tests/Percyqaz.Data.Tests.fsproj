@@ -14,6 +14,7 @@
   <ItemGroup>
     <Compile Include="Sqlite\Helpers.fs" />
     <Compile Include="Sqlite\Basic.fs" />
+    <Compile Include="Sqlite\Concurrency.fs" />
     <Compile Include="Json\Helpers.fs" />
     <Compile Include="Json\Types.fs" />
     <Compile Include="Json\RoundTrips.fs" />
