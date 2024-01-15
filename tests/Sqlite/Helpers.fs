@@ -10,6 +10,10 @@ module Helpers =
 
     let expect = function Ok v -> v | Error err -> failwithf "%A" err
 
+    let db_from_new_file(name: string) = 
+        if System.IO.File.Exists name then System.IO.File.Delete name
+        Database.from_file name
+
 type User =
     {
         Username: string

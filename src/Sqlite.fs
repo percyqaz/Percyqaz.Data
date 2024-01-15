@@ -146,20 +146,11 @@ module Sqlite =
     type Database =
         {
             ConnectionString: string
-            mutable Connection: SqliteConnection option
         }
-        member this.Connect() =
-            match this.Connection with
-            | None ->
-                let connection = new SqliteConnection(this.ConnectionString)
-                connection.Open()
-                this.Connection <- Some connection
-                connection
-            | Some connection ->
-                if not (connection.State.HasFlag Data.ConnectionState.Open) then
-                    printfn "%A" connection.State
-                    connection.Open()
-                connection
+        member this.Connect() = 
+            let conn = new SqliteConnection(this.ConnectionString)
+            if not (conn.State.HasFlag Data.ConnectionState.Open) then conn.Open()
+            conn
 
     type Query<'Parameters, 'Result> =
         {
@@ -192,8 +183,11 @@ module Sqlite =
                 Read = fun _ -> failwith "Read method must be specified"
             }
 
-        let exec (query: Query<'Parameter, 'Result>) (value: 'Parameter) (db: Database) : Result<'Result seq, string> =
-            let command = new SqliteCommand(query.SQL, db.Connect())
+        let exec (query: Query<'Parameter, 'Result>) (value: 'Parameter) (db: Database) : Result<'Result array, string> =
+
+            use connection = db.Connect()
+
+            let command = new SqliteCommand(query.SQL, connection)
             query.CreateParameters command
 
             let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
@@ -207,7 +201,7 @@ module Sqlite =
                     while sql_reader.Read() do
                         yield query.Read reader
                         reader.Next()
-                } |> Ok
+                } |> Array.ofSeq |> Ok
             with :? SqliteException as e ->
                 Error e.Message
 
@@ -221,7 +215,10 @@ module Sqlite =
             }
 
         let exec (query: NonQuery<'Parameter>) (value: 'Parameter) (db: Database) : Result<int, string> =
-            let command = new SqliteCommand(query.SQL, db.Connect())
+        
+            use connection = db.Connect()
+
+            let command = new SqliteCommand(query.SQL, connection)
             query.CreateParameters command
 
             let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
@@ -234,7 +231,10 @@ module Sqlite =
                 Error e.Message
             
         let exec_with_id (query: NonQuery<'Parameter>) (value: 'Parameter) (db: Database) : Result<int64, string> =
-            let command = new SqliteCommand(query.SQL + " SELECT last_insert_rowid();", db.Connect())
+        
+            use connection = db.Connect()
+
+            let command = new SqliteCommand(query.SQL + " SELECT last_insert_rowid();", connection)
             query.CreateParameters command
             
             let helper = CommandParameterHelper(query.Parameters.Length, command.Parameters)
@@ -248,10 +248,9 @@ module Sqlite =
 
         let batch (query: NonQuery<'Parameter>) (values: 'Parameter seq) (db: Database) : Result<int, string> =
             if Seq.isEmpty values then Ok 0 else
+            
+            use connection = db.Connect()
 
-            lock db <| fun () ->
-
-            let connection = db.Connect()
             use transaction = connection.BeginTransaction()
             let command = new SqliteCommand(query.SQL, connection, transaction)
             query.CreateParameters command
@@ -273,8 +272,10 @@ module Sqlite =
     module Database =
 
         let exec_raw (sql: string) (db: Database) : Result<int, string> =
-            let command = db.Connect().CreateCommand()
-            command.CommandText <- sql
+        
+            use connection = db.Connect()
+
+            let command = new SqliteCommand(sql, connection)
             try
                 command.ExecuteNonQuery() |> Ok
             with :? SqliteException as e ->
@@ -295,15 +296,15 @@ module Sqlite =
             let connection_string = sprintf "Data Source=%s" path
             {
                 ConnectionString = connection_string
-                Connection = None
             } |> init
             
-        let in_memory() =
-            let connection_string = sprintf "Data Source=:memory:"
-            {
-                ConnectionString = connection_string
-                Connection = None
-            } |> init
+        let in_memory(id: string) =
+            let connection_string = sprintf "Data Source=%s;Mode=Memory;Cache=Shared" id
+            let db =
+                {
+                    ConnectionString = connection_string
+                } |> init
+            db, db.Connect()
 
     type Query<'P,'R> with 
         member this.Execute (value: 'P) (db: Database) = Query.exec this value db
