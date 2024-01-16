@@ -316,7 +316,7 @@ module Sqlite =
 
         let private CHECK_FOR_MIGRATION : Query<string, int> =
             {
-                SQL = "SELECT 1 FROM percyqaz_data_migrations WHERE Id=@Id;"
+                SQL = "SELECT 1 FROM percyqaz_data_migrations WHERE Id = @Id;"
                 Parameters = [ "@Id", SqliteType.Text, -1 ]
                 FillParameters = fun p id -> p.Add id
                 Read = fun r -> r.Int32
@@ -339,12 +339,11 @@ module Sqlite =
             | Ok xs when xs.Length > 0 -> ()
             | _ -> 
 
-            printfn "Migration not run yet: %s" id
-            // todo: these steps via a transaction
+            // todo: wrap this action + the inserted row in a transaction
             apply_migration db
-            match NonQuery.exec_with_id INSERT_MIGRATION id db with
+            match NonQuery.exec INSERT_MIGRATION id db with
             | Error e -> failwithf "Error marking migration as done - Manual intervention will be needed!\n%s" e
-            | Ok i -> printfn "Migration '%s' complete, was the #%i migration to be completed" id i
+            | Ok _ -> ()
 
     type Query<'P,'R> with 
         member this.Execute (value: 'P) (db: Database) = Query.exec this value db
