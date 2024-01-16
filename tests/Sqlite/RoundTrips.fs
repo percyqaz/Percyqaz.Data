@@ -5,7 +5,7 @@ open NUnit.Framework
 open Percyqaz.Data.Sqlite
 
 [<TestFixture>]
-type Basic() =
+type RoundTrips() =
 
     [<Test>] 
     member this.RoundTripById() =

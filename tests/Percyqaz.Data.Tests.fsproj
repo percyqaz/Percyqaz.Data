@@ -19,7 +19,8 @@
     <Compile Include="Json\Scenarios.fs" />
     <Compile Include="Json\CustomCodecs.fs" />
     <Compile Include="Sqlite\Helpers.fs" />
-    <Compile Include="Sqlite\Basic.fs" />
+    <Compile Include="Sqlite\RoundTrips.fs" />
+    <Compile Include="Sqlite\JsonColumns.fs" />
     <Compile Include="Sqlite\Concurrency.fs" />
     <Compile Include="Sqlite\Migrations.fs" />
     <Compile Include="Markdown\Basic.fs" />

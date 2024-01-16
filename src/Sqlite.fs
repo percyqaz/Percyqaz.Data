@@ -111,9 +111,9 @@ module Sqlite =
     
         member this.Boolean = reader.GetBoolean this.Column
         member this.BooleanOption = this.Option reader.GetBoolean
-
-        member this.Int8 = reader.GetByte this.Column
-        member this.Int8Option = this.Option reader.GetByte
+        
+        member this.Byte = reader.GetByte this.Column
+        member this.ByteOption = this.Option reader.GetByte
 
         member this.Int16 = reader.GetInt16 this.Column
         member this.Int16Option = this.Option reader.GetInt16

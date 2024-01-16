@@ -113,3 +113,65 @@ module Users =
                 }
             )
         }
+
+[<Json.AutoCodec>]
+type NestedComplexObject =
+    {
+        Username: string
+        DateLastSeen: int64 option
+        Badges: Set<string>
+        Score: float
+        List: string list
+    }
+
+type JsonPropObject =
+    {
+        Name: string
+        Byte: byte
+        NestedObject: NestedComplexObject
+    }
+
+module JsonPropObjects =
+
+    let TABLE =
+        {
+            Name = "json_prop_objects"
+            PrimaryKey = Column.Integer("Id").Unique
+            Columns = 
+                [
+                    Column.Text("Name").Unique
+                    Column.Integer("Byte")
+                    Column.Text("NestedObject")
+                ]
+        }
+    
+    let INSERT : NonQuery<JsonPropObject> = 
+        {
+            SQL = TABLE.INSERT
+            Parameters = [
+                "@Name", SqliteType.Text, -1
+                "@Byte", SqliteType.Integer, 1
+                "@NestedObject", SqliteType.Text, -1
+            ]
+            FillParameters = (fun (p: CommandParameterHelper) (obj: JsonPropObject) -> 
+                p.Add obj.Name
+                p.Add obj.Byte
+                p.Add (JSON.ToString obj.NestedObject)
+            )
+        }
+
+    let QUERY_ALL : Query<unit, int64 * JsonPropObject> = 
+        { Query.without_parameters() with
+            SQL = """
+            SELECT *
+            FROM [json_prop_objects];
+            """
+            Read = (fun (read: RowReaderHelper) ->
+                read.Int64,
+                {
+                    Name = read.String
+                    Byte = read.Byte
+                    NestedObject = read.Json JSON
+                }
+            )
+        }
