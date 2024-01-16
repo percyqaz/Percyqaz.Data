@@ -37,21 +37,22 @@ module Sqlite =
                 sprintf "%s %s PRIMARY KEY%s%s" 
                     this.PrimaryKey.Name
                     (this.PrimaryKey.ColumnType.ToString().ToUpper())
-                    (if this.PrimaryKey.IsUnique then assert(this.PrimaryKeyIsInteger); " AUTOINCREMENT" else "")
+                    (if this.PrimaryKey.IsUnique && this.PrimaryKeyIsInteger then " AUTOINCREMENT" else "")
                     (if this.PrimaryKey.IsNullable then "" else " NOT NULL")
             let cols =
                 this.Columns 
-                |> Seq.map (fun c ->
+                |> List.map (fun c ->
                     sprintf "%s %s%s%s" 
                         c.Name
                         (c.ColumnType.ToString().ToUpper())
                         (if c.IsUnique then " UNIQUE" else "")
                         (if c.IsNullable then "" else " NOT NULL")
                 )
+                |> fun l -> pk :: l
                 |> String.concat ", "
             if if_not_exists then
-                sprintf "CREATE TABLE [%s] IF NOT EXISTS ( %s, %s );" this.Name pk cols
-            else sprintf "CREATE TABLE [%s] ( %s, %s );" this.Name pk cols
+                sprintf "CREATE TABLE IF NOT EXISTS [%s] ( %s );" this.Name cols
+            else sprintf "CREATE TABLE [%s] ( %s );" this.Name cols
 
         member this.DROP (if_exists: bool) =
             if if_exists then 
@@ -288,7 +289,7 @@ module Sqlite =
         let drop_table_if_exists (table: TableCommandHelper) (db: Database) = exec_raw (table.DROP true) db
 
         let private init (db: Database) =
-            exec_raw "PRAGMA encoding = 'UTF-8'" db 
+            exec_raw "PRAGMA encoding = 'UTF-8';" db 
             |> function Ok _ -> () | Error e -> failwithf "Unexpected error %s" e
             db
     
@@ -305,6 +306,45 @@ module Sqlite =
                     ConnectionString = connection_string
                 } |> init
             db, db.Connect()
+
+        let private MIGRATION_TABLE : TableCommandHelper =
+            { 
+                Name = "percyqaz_data_migrations"
+                PrimaryKey = Column.Text("Id").Unique
+                Columns = []
+            }
+
+        let private CHECK_FOR_MIGRATION : Query<string, int> =
+            {
+                SQL = "SELECT 1 FROM percyqaz_data_migrations WHERE Id=@Id;"
+                Parameters = [ "@Id", SqliteType.Text, -1 ]
+                FillParameters = fun p id -> p.Add id
+                Read = fun r -> r.Int32
+            }
+            
+        let private INSERT_MIGRATION : NonQuery<string> =
+            {
+                SQL = MIGRATION_TABLE.INSERT
+                Parameters = [ "@Id", SqliteType.Text, -1 ]
+                FillParameters = fun p id -> p.Add id
+            }
+
+        let migrate (id: string) (apply_migration: Database -> unit) (db: Database) =
+            match create_table_if_not_exists MIGRATION_TABLE db with
+            | Error e -> failwithf "Error creating the migrations table: %s" e
+            | Ok _ ->
+
+            match Query.exec CHECK_FOR_MIGRATION id db with
+            | Error e -> failwithf "Error detecting migration table: %s" e
+            | Ok xs when xs.Length > 0 -> ()
+            | _ -> 
+
+            printfn "Migration not run yet: %s" id
+            // todo: these steps via a transaction
+            apply_migration db
+            match NonQuery.exec_with_id INSERT_MIGRATION id db with
+            | Error e -> failwithf "Error marking migration as done - Manual intervention will be needed!\n%s" e
+            | Ok i -> printfn "Migration '%s' complete, was the #%i migration to be completed" id i
 
     type Query<'P,'R> with 
         member this.Execute (value: 'P) (db: Database) = Query.exec this value db

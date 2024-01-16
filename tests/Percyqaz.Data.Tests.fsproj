@@ -21,6 +21,7 @@
     <Compile Include="Sqlite\Helpers.fs" />
     <Compile Include="Sqlite\Basic.fs" />
     <Compile Include="Sqlite\Concurrency.fs" />
+    <Compile Include="Sqlite\Migrations.fs" />
     <Compile Include="Markdown\Basic.fs" />
   </ItemGroup>
 
