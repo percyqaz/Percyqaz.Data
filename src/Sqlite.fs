@@ -74,24 +74,55 @@ module Sqlite =
     type CommandParameterHelper(count: int, parameters: SqliteParameterCollection) =
         let mutable col = -1
 
-        member private this.Column =
+        let set(obj: obj) =
             col <- col + 1
-            col
+            parameters.[col].Value <- obj
 
         member this.Next() =
             assert(col + 1 = count)
             col <- -1
 
-        member this.Option(value: 'T option) =
+        member this.Option (method: 'T -> unit) (value: 'T option) =
             match value with
-            | Some v -> this.Add(v)
-            | None -> this.Null()
+            | Some v -> method v
+            | None -> this.Unit()
         
-        member this.Null() =
-            parameters.[this.Column].Value <- DBNull.Value
+        member this.Unit() = set DBNull.Value
 
-        member this.Add(value: obj) =
-            parameters.[this.Column].Value <- value
+        member this.Object(value: obj) = set value
+
+        member this.String(value: string) = set value
+        member this.StringOption = this.Option this.String
+
+        member this.Blob(value: byte array) = set value
+        member this.BlobOption = this.Option this.Blob
+
+        member this.Boolean(value: bool) = set value
+        member this.BooleanOption = this.Option this.Boolean
+        
+        member this.Byte(value: uint8) = set value
+        member this.ByteOption = this.Option this.Byte
+        
+        member this.Int16(value: int16) = set value
+        member this.Int16Option = this.Option this.Int16
+        
+        member this.Int32(value: int32) = set value
+        member this.Int32Option = this.Option this.Int32
+            
+        member this.Int64(value: int64) = set value
+        member this.Int64Option = this.Option this.Int64
+            
+        member this.Float32(value: float32) = set value
+        member this.Float32Option = this.Option this.Float32
+        
+        member this.Float64(value: float) = set value
+        member this.Float64Option = this.Option this.Float64
+        
+        member this.Decimal(value: decimal) = set value
+        member this.DecimalOption = this.Option this.Decimal
+    
+        member this.Json<'T>(json: Json) (value: 'T) =
+            this.String (json.ToString value)
 
     type RowReaderHelper(reader: SqliteDataReader) =
         let mutable col = -1
@@ -318,7 +349,7 @@ module Sqlite =
             {
                 SQL = "SELECT 1 FROM percyqaz_data_migrations WHERE Id = @Id;"
                 Parameters = [ "@Id", SqliteType.Text, -1 ]
-                FillParameters = fun p id -> p.Add id
+                FillParameters = fun p id -> p.String id
                 Read = fun r -> r.Int32
             }
             
@@ -326,7 +357,7 @@ module Sqlite =
             {
                 SQL = MIGRATION_TABLE.INSERT
                 Parameters = [ "@Id", SqliteType.Text, -1 ]
-                FillParameters = fun p id -> p.Add id
+                FillParameters = fun p id -> p.String id
             }
 
         let migrate (id: string) (apply_migration: Database -> unit) (db: Database) =

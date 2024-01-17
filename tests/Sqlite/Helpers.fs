@@ -47,10 +47,10 @@ module Users =
                 "@Score", SqliteType.Real, 8
             ]
             FillParameters = (fun (p: CommandParameterHelper) (user: User) -> 
-                p.Add user.Username
-                p.Option user.DateLastSeen
-                p.Add (JSON.ToString user.Badges)
-                p.Add user.Score
+                p.String user.Username
+                p.Int64Option user.DateLastSeen
+                p.Json JSON user.Badges
+                p.Float64 user.Score
             )
         }
 
@@ -80,7 +80,7 @@ module Users =
             """
             Parameters = ["@Id", SqliteType.Integer, 8]
             FillParameters = (fun (p: CommandParameterHelper) (id: int64) ->
-                p.Add id
+                p.Int64 id
             )
             Read = (fun (read: RowReaderHelper) ->
                 read.Int64 |> ignore
@@ -154,9 +154,9 @@ module JsonPropObjects =
                 "@NestedObject", SqliteType.Text, -1
             ]
             FillParameters = (fun (p: CommandParameterHelper) (obj: JsonPropObject) -> 
-                p.Add obj.Name
-                p.Add obj.Byte
-                p.Add (JSON.ToString obj.NestedObject)
+                p.String obj.Name
+                p.Byte obj.Byte
+                p.Json JSON obj.NestedObject
             )
         }
 
