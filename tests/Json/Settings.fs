@@ -41,11 +41,11 @@ type ``3: Settings tests``() =
                 let no_expand = Json({ Json.Settings.Default with FormatExpandArrays = false }).WithDefaults()
 
                 Assert.AreEqual("[2, 4, 8]", no_expand.ToString [2; 4; 8])
-                Assert.AreEqual("[\n    2, \n    4, \n    8\n]", expand.ToString [2; 4; 8])
+                Assert.AreEqual("[\n    2,\n    4,\n    8\n]", expand.ToString [2; 4; 8])
 
     [<Test>] member this.FormatExpandObjects() =
                 let expand = Json({ Json.Settings.Default with FormatExpandObjects = true }).WithDefaults()
                 let no_expand = Json({ Json.Settings.Default with FormatExpandObjects = false }).WithDefaults()
     
                 Assert.AreEqual("""{"X": 2, "Y": 4}""", no_expand.ToString { Record.X = 2L; Y = 4.0f })
-                Assert.AreEqual("{\n    \"X\": 2, \n    \"Y\": 4\n}", expand.ToString { Record.X = 2L; Y = 4.0f })
+                Assert.AreEqual("{\n    \"X\": 2,\n    \"Y\": 4\n}", expand.ToString { Record.X = 2L; Y = 4.0f })
