@@ -154,7 +154,7 @@ module Json =
                         match xs with
                         | [] -> ()
                         | x :: [] -> writeJson x
-                        | x :: xs -> writeJson x; write ", "; (if expandArray then newline()); f xs
+                        | x :: xs -> writeJson x; write ","; (if expandArray then newline() else write " "); f xs
                     if expandArray then
                         write "["
                         indent <- indent + 1
@@ -169,7 +169,7 @@ module Json =
                         match xs with
                         | [] -> ()
                         | (k, x) :: [] -> write "\""; writeString k; write "\": "; writeJson x
-                        | (k, x) :: xs -> write "\""; writeString k; write "\": "; writeJson x; write ", "; (if expandObj then newline()); f xs
+                        | (k, x) :: xs -> write "\""; writeString k; write "\": "; writeJson x; write ","; (if expandObj then newline() else write " "); f xs
                     if expandObj then
                         write "{"
                         indent <- indent + 1
