@@ -86,7 +86,7 @@ module Json =
             let keyValue = stringLiteral .>>. (ws >>. str ":" >>. ws >>. jvalue)
             let jobject = listBetweenStrings "{" "}" keyValue (Map.ofList >> JSON.Object)
             do jvalueRef := choice [jobject; jlist; jstring; jtrue; jfalse; jnull; jnumber]
-            jvalue .>> eof
+            jvalue .>> spaces .>> eof
 
         let parseStream name stream = runParserOnStream jsonParser () name stream Text.Encoding.UTF8
         let parseFile path = runParserOnFile jsonParser () path Text.Encoding.UTF8
