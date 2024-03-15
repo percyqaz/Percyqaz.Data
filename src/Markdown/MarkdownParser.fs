@@ -310,17 +310,22 @@ let (|HtmlEntity|_|) input =
 
 /// Defines a context for the main `parseParagraphs` function
 type ParsingContext =
-    { Links: Dictionary<string, string * string option>
-      Newline: string
-      IsFirst: bool
-      CurrentRange: MarkdownRange option
-      ParseOptions: MarkdownParseOptions }
+    {
+        Links: Dictionary<string, string * string option>
+        Newline: string
+        IsFirst: bool
+        CurrentRange: MarkdownRange option
+        ParseOptions: MarkdownParseOptions
+    }
 
-    member x.ParseCodeAsOther = (x.ParseOptions &&& MarkdownParseOptions.ParseCodeAsOther) <> enum 0
+    member x.ParseCodeAsOther =
+        (x.ParseOptions &&& MarkdownParseOptions.ParseCodeAsOther) <> enum 0
 
-    member x.ParseNonCodeAsOther = (x.ParseOptions &&& MarkdownParseOptions.ParseNonCodeAsOther) <> enum 0
+    member x.ParseNonCodeAsOther =
+        (x.ParseOptions &&& MarkdownParseOptions.ParseNonCodeAsOther) <> enum 0
 
-    member x.AllowYamlFrontMatter = (x.ParseOptions &&& MarkdownParseOptions.AllowYamlFrontMatter) <> enum 0
+    member x.AllowYamlFrontMatter =
+        (x.ParseOptions &&& MarkdownParseOptions.AllowYamlFrontMatter) <> enum 0
 
 /// Parses a body of a paragraph and recognizes all inline tags.
 let rec parseChars acc input (ctx: ParsingContext) =
@@ -337,7 +342,8 @@ let rec parseChars acc input (ctx: ParsingContext) =
                         | Some(n) ->
                             Some(
                                 { n with
-                                    EndColumn = n.StartColumn + acc.Length }
+                                    EndColumn = n.StartColumn + acc.Length
+                                }
                             )
                         | None -> None
 
@@ -348,12 +354,15 @@ let rec parseChars acc input (ctx: ParsingContext) =
                                 | Some(n) ->
                                     Some(
                                         { n with
-                                            StartColumn = n.StartColumn + acc.Length }
+                                            StartColumn = n.StartColumn + acc.Length
+                                        }
                                     )
-                                | None -> None }
+                                | None -> None
+                        }
 
                     let text = String(List.rev acc |> Array.ofList)
-                    ([ Literal(text, range) ], ctx))
+                    ([ Literal(text, range) ], ctx)
+            )
 
         match input with
         // Recognizes explicit line-break at the end of line
@@ -388,7 +397,8 @@ let rec parseChars acc input (ctx: ParsingContext) =
                     Some
                         { n with
                             StartColumn = n.StartColumn + s
-                            EndColumn = n.EndColumn - e }
+                            EndColumn = n.EndColumn - e
+                        }
                 | None -> None
 
             yield InlineCode(String(Array.ofList body).Trim(), rng)
@@ -412,9 +422,11 @@ let rec parseChars acc input (ctx: ParsingContext) =
                         | Some(n) ->
                             Some(
                                 { n with
-                                    StartColumn = n.StartColumn + 1 }
+                                    StartColumn = n.StartColumn + 1
+                                }
                             )
-                        | None -> None }
+                        | None -> None
+                }
 
             yield! value
             let code = String(Array.ofList body).Trim()
@@ -426,7 +438,8 @@ let rec parseChars acc input (ctx: ParsingContext) =
                     | Some(n) ->
                         Some(
                             { n with
-                                EndColumn = n.StartColumn + code.Length }
+                                EndColumn = n.StartColumn + code.Length
+                            }
                         )
                     | None -> None
                 )
@@ -601,7 +614,10 @@ let (|HorizontalRule|_|) (line: string, _n: MarkdownRange) =
 let (|NestedCodeBlock|_|) lines =
     match lines with
     | Lines.TakeCodeBlock(_numspaces, (Lines.TrimBlank lines as takenLines), rest) when lines <> [] ->
-        let code = [ for (l, _n) in lines -> if String.IsNullOrEmpty l then "" else trimSpaces 4 l ]
+        let code =
+            [
+                for (l, _n) in lines -> if String.IsNullOrEmpty l then "" else trimSpaces 4 l
+            ]
 
         Some(code @ [ "" ], takenLines, rest, None, "", "")
     | _ -> None
@@ -630,7 +646,8 @@ let (|FencedCodeBlock|_|) lines =
                         ->
                         fenceString <- String.replicate n start
                         true
-                    | _ -> false)
+                    | _ -> false
+                )
 
             let handleIndent (codeLine: string) =
                 if codeLine.Length <= indent && String.IsNullOrWhiteSpace codeLine then
@@ -718,7 +735,8 @@ let (|ListStart|_|) =
         let li =
             ((fst item).Substring(2),
              { range with
-                 StartColumn = range.StartColumn + 2 })
+                 StartColumn = range.StartColumn + 2
+             })
 
         let (StringPosition.TrimStartAndCount(startIndent2, _spaces2, _)) = li
 
@@ -733,7 +751,8 @@ let (|ListStart|_|) =
     | StringPosition.TrimStartAndCount(startIndent,
                                        _spaces,
                                        (SkipSomeNumbers(skipNumCount, '.' :: ' ' :: List.AsString item))) ->
-        let (StringPosition.TrimStartAndCount(startIndent2, _spaces2, _)) = (item, MarkdownRange.zero)
+        let (StringPosition.TrimStartAndCount(startIndent2, _spaces2, _)) =
+            (item, MarkdownRange.zero)
 
         let endIndent =
             startIndent
@@ -749,18 +768,22 @@ let (|ListStart|_|) =
 /// Splits input into lines until whitespace or starting of a list and the rest.
 let (|LinesUntilListOrWhite|) lines =
     lines
-    |> List.partitionUntil (function
+    |> List.partitionUntil (
+        function
         | ListStart _
         | StringPosition.WhiteSpace -> true
-        | _ -> false)
+        | _ -> false
+    )
 
 /// Splits input into lines until not-indented line or starting of a list and the rest.
 let (|LinesUntilListOrUnindented|) lines =
     lines
-    |> List.partitionUntilLookahead (function
+    |> List.partitionUntilLookahead (
+        function
         | (ListStart _ | StringPosition.Unindented) :: _
         | StringPosition.WhiteSpace :: StringPosition.WhiteSpace :: _ -> true
-        | _ -> false)
+        | _ -> false
+    )
 
 /// Recognizes a list item until the next list item (possibly nested) or end of a list.
 /// The parameter specifies whether the previous line was simple (single-line not
@@ -791,16 +814,19 @@ let (|ListItem|_|) prevSimple lines =
                 | _, _ -> false
 
         let lines =
-            [ yield item
-              for (line, n) in continued do
-                  yield (line.Trim(), n)
-              for (line, n) in more do
-                  let trimmed = trimSpaces endIndent line
+            [
+                yield item
+                for (line, n) in continued do
+                    yield (line.Trim(), n)
+                for (line, n) in more do
+                    let trimmed = trimSpaces endIndent line
 
-                  yield
-                      (trimmed,
-                       { n with
-                           StartColumn = n.StartColumn + line.Length - trimmed.Length }) ]
+                    yield
+                        (trimmed,
+                         { n with
+                             StartColumn = n.StartColumn + line.Length - trimmed.Length
+                         })
+            ]
         //let trimmed = line.TrimStart()
         //if trimmed.Length >= line.Length - endIndent then yield trimmed
         //else yield line.Substring(endIndent) ]
@@ -955,12 +981,15 @@ let (|EmacsTableLine|_|)
             [ 1..n ]
             |> List.map (fun i ->
                 let rng =
-                    { StartLine = n
-                      StartColumn = 0
-                      EndLine = n
-                      EndColumn = p.[i] - p.[i - 1] - 1 }
+                    {
+                        StartLine = n
+                        StartColumn = 0
+                        EndLine = n
+                        EndColumn = p.[i] - p.[i - 1] - 1
+                    }
 
-                line.Substring(p.[i - 1] + 1, p.[i] - p.[i - 1] - 1), rng)
+                line.Substring(p.[i - 1] + 1, p.[i] - p.[i - 1] - 1), rng
+            )
 
         if List.forall check parts then Some(p, parts) else None
 
@@ -1035,7 +1064,8 @@ let (|BlockquoteStart|_|) (line: string, n: MarkdownRange) =
             group.Value,
             { n with
                 StartColumn = n.StartColumn + group.Index
-                EndColumn = n.StartColumn + group.Index + group.Length }
+                EndColumn = n.StartColumn + group.Index + group.Length
+            }
         )
     else
         None
@@ -1075,7 +1105,8 @@ let (|LinesUntilBlockquoteEnds|) input =
         | BlockquoteStart _ :: _ -> true
         | Heading _ -> true
         | StringPosition.WhiteSpace :: _ -> true
-        | _ -> false)
+        | _ -> false
+    )
 
 /// Recognizes blockquote - continues taking paragraphs
 /// starting with '>' until there is something else
@@ -1168,7 +1199,8 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
     seq {
         let ctx =
             { ctx with
-                CurrentRange = updateCurrentRange lines }
+                CurrentRange = updateCurrentRange lines
+            }
 
         let frontMatter, (Lines.TrimBlankStart(_, moreLines)) =
             if ctx.IsFirst && ctx.AllowYamlFrontMatter then
@@ -1184,7 +1216,8 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
 
         let ctx =
             { ctx with
-                CurrentRange = updateCurrentRange moreLines }
+                CurrentRange = updateCurrentRange moreLines
+            }
 
         let ctx = { ctx with IsFirst = false }
 
@@ -1242,7 +1275,8 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
                     headers
                     |> Option.map (fun headers -> headers |> List.map (fun i -> parseParagraphs ctx i |> List.ofSeq))
 
-                let rows = rows |> List.map (List.map (fun i -> parseParagraphs ctx i |> List.ofSeq))
+                let rows =
+                    rows |> List.map (List.map (fun i -> parseParagraphs ctx i |> List.ofSeq))
 
                 yield TableBlock(headParagraphs, alignments, rows, ctx.CurrentRange)
 
@@ -1280,7 +1314,8 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
                         |> List.nestUnderLastMatching (fun (Node((_, kind, _), _)) -> kind = baseKind)
                         |> List.map (fun (Node(info, children), nested) ->
                             let children = nestUnmatchingItems children
-                            Node(info, children @ nested))
+                            Node(info, children @ nested)
+                        )
                     | [] -> []
 
                 // Turn tree into nested list definitions
@@ -1291,20 +1326,24 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
                         | _ -> Unordered
 
                     let items =
-                        [ for (Node((simple, _, body), nested)) in nodes ->
-                              [ let rng = body |> List.map snd |> MarkdownRange.mergeRanges
+                        [
+                            for (Node((simple, _, body), nested)) in nodes ->
+                                [
+                                    let rng = body |> List.map snd |> MarkdownRange.mergeRanges
 
-                                if not simple then
-                                    yield! parseParagraphs ctx body
-                                else
-                                    yield
-                                        MarkdownParagraph.Span(
-                                            parseSpans (body |> List.map fst |> String.concat ctx.Newline, rng) ctx,
-                                            ctx.CurrentRange
-                                        )
+                                    if not simple then
+                                        yield! parseParagraphs ctx body
+                                    else
+                                        yield
+                                            MarkdownParagraph.Span(
+                                                parseSpans (body |> List.map fst |> String.concat ctx.Newline, rng) ctx,
+                                                ctx.CurrentRange
+                                            )
 
-                                if nested <> [] then
-                                    yield formatTree nested ] ]
+                                    if nested <> [] then
+                                        yield formatTree nested
+                                ]
+                        ]
 
                     ListBlock(kind, items, ctx.CurrentRange)
 
@@ -1314,15 +1353,19 @@ let rec parseParagraphs (ctx: ParsingContext) (lines: (string * MarkdownRange) l
                     =
                     let containsNonSimple =
                         tree
-                        |> List.exists (function
+                        |> List.exists (
+                            function
                             | Node((false, _, _), _) -> true
-                            | _ -> false)
+                            | _ -> false
+                        )
 
                     if containsNonSimple then
                         nodes
-                        |> List.map (function
+                        |> List.map (
+                            function
                             | Node((_, kind, content), nested) ->
-                                Node((false, kind, content), unifySimpleProperty nested))
+                                Node((false, kind, content), unifySimpleProperty nested)
+                        )
                     else
                         nodes
 

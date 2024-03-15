@@ -9,7 +9,8 @@ type Basic() =
     [<Test>]
     member this.BasicParserTest() =
 
-        let sample = """
+        let sample =
+            """
 # Heading
 
 ----
@@ -27,5 +28,4 @@ Paragraph 2
 - List items
 """
 
-        Markdown.Parse(sample.Trim()).Paragraphs
-        |> printfn "%A"
+        Markdown.Parse(sample.Trim()).Paragraphs |> printfn "%A"

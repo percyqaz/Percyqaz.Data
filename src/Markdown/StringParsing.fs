@@ -90,9 +90,7 @@ module String =
             printf "skipped '%s' which contains non-whitespace character!" skipped
 
         if result = text then
-            printf
-                "could not skip a line of %s, because no line-ending character was found!"
-                text
+            printf "could not skip a line of %s, because no line-ending character was found!" text
 
         result
 
@@ -111,7 +109,8 @@ module String =
             if String.IsNullOrWhiteSpace(line) then
                 ""
             else
-                line.Substring(spaces))
+                line.Substring(spaces)
+        )
 
 module StringPosition =
     /// Matches when a string is a whitespace or null
@@ -133,7 +132,8 @@ module StringPosition =
         (trimmed,
          { n with
              StartColumn = n.StartColumn + text.Length - trimmedStart.Length
-             EndColumn = n.EndColumn - trimmedStart.Length + trimmed.Length })
+             EndColumn = n.EndColumn - trimmedStart.Length + trimmed.Length
+         })
 
     /// Returns a string trimmed from the end
     let (|TrimEnd|) (text: string, n: MarkdownRange) =
@@ -141,7 +141,8 @@ module StringPosition =
 
         (trimmed,
          { n with
-             EndColumn = n.EndColumn - text.Length + trimmed.Length })
+             EndColumn = n.EndColumn - text.Length + trimmed.Length
+         })
 
     /// Returns a string trimmed from the start
     let (|TrimStart|) (text: string, n: MarkdownRange) =
@@ -149,7 +150,8 @@ module StringPosition =
 
         (trimmed,
          { n with
-             StartColumn = n.StartColumn + text.Length - trimmed.Length })
+             StartColumn = n.StartColumn + text.Length - trimmed.Length
+         })
 
     /// Returns a string trimmed from the end using characters given as a parameter
     let (|TrimEndUsing|) chars (text: string, n: MarkdownRange) =
@@ -157,7 +159,8 @@ module StringPosition =
 
         (trimmed,
          { n with
-             EndColumn = n.EndColumn - text.Length + trimmed.Length })
+             EndColumn = n.EndColumn - text.Length + trimmed.Length
+         })
 
     /// Returns a string trimmed from the start together with
     /// the number of skipped whitespace characters
@@ -169,7 +172,8 @@ module StringPosition =
         text.Substring(0, len).Replace("\t", "    ").Length,
         (trimmed,
          { n with
-             StartColumn = n.StartColumn + text.Length - trimmed.Length })
+             StartColumn = n.StartColumn + text.Length - trimmed.Length
+         })
 
     /// Matches when a string starts with any of the specified sub-strings
     let (|StartsWithAny|_|) (starts: string seq) (text: string, _n: MarkdownRange) =
@@ -184,7 +188,8 @@ module StringPosition =
             Some(
                 text.Substring(start.Length),
                 { n with
-                    StartColumn = n.StartColumn + text.Length - start.Length }
+                    StartColumn = n.StartColumn + text.Length - start.Length
+                }
             )
         else
             None
@@ -196,7 +201,8 @@ module StringPosition =
             Some(
                 text.Substring(start.Length).Trim(),
                 { n with
-                    StartColumn = n.StartColumn + text.Length - start.Length }
+                    StartColumn = n.StartColumn + text.Length - start.Length
+                }
             )
         else
             None
@@ -238,7 +244,8 @@ module StringPosition =
                 s.Substring(starts.Length, s.Length - starts.Length - ends.Length),
                 { n with
                     StartColumn = n.StartColumn + s.Length - starts.Length
-                    EndColumn = n.EndColumn - s.Length + ends.Length }
+                    EndColumn = n.EndColumn - s.Length + ends.Length
+                }
             )
         else
             None
@@ -286,7 +293,8 @@ module StringPosition =
                     wrapped,
                     (rest,
                      { n with
-                         StartColumn = id + ends.Length })
+                         StartColumn = id + ends.Length
+                     })
                 )
             else
                 None
@@ -362,7 +370,8 @@ module Lines =
         match
             input
             |> List.partitionWhile (fun s ->
-                String.IsNullOrWhiteSpace s || s.StartsWith(start, StringComparison.Ordinal))
+                String.IsNullOrWhiteSpace s || s.StartsWith(start, StringComparison.Ordinal)
+            )
         with
         | matching, rest when matching <> [] -> Some(matching, rest)
         | _ -> None
@@ -391,7 +400,8 @@ module Lines =
 
     /// Removes whitespace lines from the beginning of the list
     let (|TrimBlankStart|) (lines: (string * MarkdownRange) list) =
-        let takenLines = lines |> List.takeWhile (fun (s, _n) -> String.IsNullOrWhiteSpace s)
+        let takenLines =
+            lines |> List.takeWhile (fun (s, _n) -> String.IsNullOrWhiteSpace s)
 
         let rest = lines |> List.skipWhile (fun (s, _n) -> String.IsNullOrWhiteSpace s)
 
@@ -410,7 +420,9 @@ module Lines =
 
             (trimmed,
              { n with
-                 EndColumn = n.EndColumn - s.Length + trimmed.Length }))
+                 EndColumn = n.EndColumn - s.Length + trimmed.Length
+             })
+        )
 
 /// Parameterized pattern that assigns the specified value to the
 /// first component of a tuple. Usage:
@@ -428,13 +440,15 @@ open System.Collections.Generic
 /// characters in it - otherwise, the parsing fails.
 let (|ParseCommands|_|) (str: string) =
     let kvs =
-        [ for cmd in str.Split(',') do
-              let kv = cmd.Split([| '='; ':' |])
+        [
+            for cmd in str.Split(',') do
+                let kv = cmd.Split([| '='; ':' |])
 
-              if kv.Length = 2 then
-                  yield kv.[0].Trim(), kv.[1].Trim()
-              elif kv.Length = 1 then
-                  yield kv.[0].Trim(), "" ]
+                if kv.Length = 2 then
+                    yield kv.[0].Trim(), kv.[1].Trim()
+                elif kv.Length = 1 then
+                    yield kv.[0].Trim(), ""
+        ]
 
     let allKeysValid =
         kvs

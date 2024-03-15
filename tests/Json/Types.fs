@@ -10,42 +10,39 @@ type Enum =
     | Two = 2L
     | Three = 3L
 
-type [<Json.AutoCodec>] Union =
+[<Json.AutoCodec>]
+type Union =
     | Nil
     | One of string
     | Many of Union * float list
 
-type [<Struct>][<Json.AutoCodec>] StructUnion =
+[<Struct>]
+[<Json.AutoCodec>]
+type StructUnion =
     | StNil
     | StOne of string
     | StMany of float list * char
 
-type [<Json.AutoCodec(false)>] Record =
-    {
-        X: int64
-        Y: float32
-    }
+[<Json.AutoCodec(false)>]
+type Record = { X: int64; Y: float32 }
 
-type [<Json.AutoCodec>] RecordNoDefaults =
-    {
-        X: int64
-        Y: float32
-    }
+[<Json.AutoCodec>]
+type RecordNoDefaults = { X: int64; Y: float32 }
 
-type [<Json.AutoCodec(false)>] RecordWithDefault =
+[<Json.AutoCodec(false)>]
+type RecordWithDefault =
     {
         X: int64
         Y: float32
     }
     static member Default = { X = 64L; Y = 0.3428972214f }
 
-type [<Struct>][<Json.AutoCodec>] StRecord =
-    {
-        X: int64
-        Y: float32
-    }
+[<Struct>]
+[<Json.AutoCodec>]
+type StRecord = { X: int64; Y: float32 }
 
-type [<Json.AutoCodec(false)>] RecordPrimitives =
+[<Json.AutoCodec(false)>]
+type RecordPrimitives =
     {
         Reals: float * float32 * decimal
         ShortIntegers: int8 * uint8 * int16 * uint16

@@ -27,7 +27,7 @@ type MarkdownDocument(paragraphs, links) =
 
 /// Static class that provides methods for formatting
 /// and transforming Markdown documents.
-type Markdown () =
+type Markdown() =
     /// Parse the specified text into a MarkdownDocument. Line breaks in the
     /// inline HTML (etc.) will be stored using the specified string.
     static member Parse(text, ?newline, ?parseOptions) =
@@ -38,36 +38,44 @@ type Markdown () =
         use reader = new StringReader(text)
 
         let lines =
-            [ let line = ref ""
-              let mutable lineNo = 1
+            [
+                let line = ref ""
+                let mutable lineNo = 1
 
-              while (line := reader.ReadLine()
-                     line.Value <> null) do
-                  yield
-                      (line.Value,
-                       { StartLine = lineNo
-                         StartColumn = 0
-                         EndLine = lineNo
-                         EndColumn = line.Value.Length })
+                while (line := reader.ReadLine()
+                       line.Value <> null) do
+                    yield
+                        (line.Value,
+                         {
+                             StartLine = lineNo
+                             StartColumn = 0
+                             EndLine = lineNo
+                             EndColumn = line.Value.Length
+                         })
 
-                  lineNo <- lineNo + 1
+                    lineNo <- lineNo + 1
 
-              if text.EndsWith(newline, StringComparison.Ordinal) then
-                  yield
-                      ("",
-                       { StartLine = lineNo
-                         StartColumn = 0
-                         EndLine = lineNo
-                         EndColumn = 0 }) ]
+                if text.EndsWith(newline, StringComparison.Ordinal) then
+                    yield
+                        ("",
+                         {
+                             StartLine = lineNo
+                             StartColumn = 0
+                             EndLine = lineNo
+                             EndColumn = 0
+                         })
+            ]
         //|> Utils.replaceTabs 4
         let links = Dictionary<_, _>()
         //let (Lines.TrimBlank lines) = lines
         let ctx: ParsingContext =
-            { Newline = newline
-              IsFirst = true
-              Links = links
-              CurrentRange = Some(MarkdownRange.zero)
-              ParseOptions = parseOptions }
+            {
+                Newline = newline
+                IsFirst = true
+                Links = links
+                CurrentRange = Some(MarkdownRange.zero)
+                ParseOptions = parseOptions
+            }
 
         let paragraphs =
             lines

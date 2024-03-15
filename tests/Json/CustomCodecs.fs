@@ -8,12 +8,20 @@ type Setting =
         Set: int -> unit
         Get: unit -> int
     }
-    static member Make (i: int) =
+    static member Make(i: int) =
         let mutable i = i
-        { Set = (fun x -> printfn "Changing from %i to %i" i x; i <- x); Get = fun () -> i }
+
+        {
+            Set =
+                (fun x ->
+                    printfn "Changing from %i to %i" i x
+                    i <- x
+                )
+            Get = fun () -> i
+        }
 
 [<Json.AutoCodec>]
-type SettingRecord = 
+type SettingRecord =
     {
         S: Setting
     }
@@ -21,35 +29,50 @@ type SettingRecord =
 
 type SettingCodec() =
     inherit Json.Codec<Setting>()
-    override this.To (ctx: Json.Context) =
+
+    override this.To(ctx: Json.Context) =
         let cdc = ctx.GetCodec<int>()
         fun s -> s.Get() |> cdc.To
-    override this.From (ctx: Json.Context) =
+
+    override this.From(ctx: Json.Context) =
         let cdc = ctx.GetCodec<int>()
-        fun s json -> s.Set(cdc.From (s.Get()) json); s
-    override this.Default (ctx: Json.Context) =
-        fun () -> Setting.Make 0
+
+        fun s json ->
+            s.Set(cdc.From (s.Get()) json)
+            s
+
+    override this.Default(ctx: Json.Context) = fun () -> Setting.Make 0
 
 type FloatOverride() =
     inherit Json.Codec<float>()
-    override this.To (ctx: Json.Context) =
-        fun f -> JSON.Number (f.ToString())
-    override this.From (ctx: Json.Context) =
-        fun f json -> f
-    override this.Default (ctx: Json.Context) =
-        fun () -> printfn "Calling custom float default"; -1.0
+    override this.To(ctx: Json.Context) = fun f -> JSON.Number(f.ToString())
+    override this.From(ctx: Json.Context) = fun f json -> f
+
+    override this.Default(ctx: Json.Context) =
+        fun () ->
+            printfn "Calling custom float default"
+            -1.0
 
 type ExternalRecord =
-    { A: int; B: int } with static member Default = { A = 10; B = 20 }
+    {
+        A: int
+        B: int
+    }
+    static member Default = { A = 10; B = 20 }
 
 type ExternalUnion =
-    | A of int | B of int
+    | A of int
+    | B of int
 
 [<TestFixture>]
 type ``5: Custom Codec Implementations``() =
-        
-    let env = 
-        Json({ Json.Settings.Default with FormatExpandObjects = false })
+
+    let env =
+        Json(
+            { Json.Settings.Default with
+                FormatExpandObjects = false
+            }
+        )
             .WithCodec<FloatOverride>()
             .WithDefaults()
             .WithCodec<SettingCodec>()
@@ -69,7 +92,6 @@ type ``5: Custom Codec Implementations``() =
     [<Test>]
     member this.ExternalRecordAutoCodec() =
         Helpers.round_trip env { ExternalRecord.Default with A = 100 }
-    
+
     [<Test>]
-    member this.ExternalUnionAutoCodec() =
-        Helpers.round_trip env (B 100)
+    member this.ExternalUnionAutoCodec() = Helpers.round_trip env (B 100)
