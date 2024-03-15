@@ -169,6 +169,12 @@ module Sqlite =
     
         member this.Stream = reader.GetStream this.Column
         member this.StreamOption = this.Option reader.GetStream
+
+        member this.Blob =
+            use stream = this.Stream
+            use ms = new IO.MemoryStream()
+            stream.CopyTo ms
+            ms.ToArray()
     
         member this.Json<'T>(json: Json) : 'T = 
             match json.FromStream ("sqlite", reader.GetStream this.Column) with
