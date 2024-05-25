@@ -174,7 +174,7 @@ module Sqlite =
             col <- col + 1
             col
 
-        member inline private this.Option<'T>(method: int -> 'T) =
+        member this.Option<'T>(method: int -> 'T) =
             let c = this.Column
             if reader.IsDBNull c then None else Some(method c)
 
