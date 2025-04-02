@@ -278,7 +278,7 @@ module Sqlite =
             helper.Next()
 
             try
-                let sql_reader = command.ExecuteReader()
+                let sql_reader = command.ExecuteReader(Data.CommandBehavior.SequentialAccess)
                 let reader = RowReaderHelper(sql_reader)
 
                 seq {
@@ -381,7 +381,17 @@ module Sqlite =
         let drop_table_if_exists (table: TableCommandHelper) (db: Database) = exec_raw (table.DROP true) db
 
         let private init (db: Database) =
+            exec_raw "PRAGMA busy_timeout = 30000;" db
+            |> function
+                | Ok _ -> ()
+                | Error e -> failwithf "Unexpected error %s" e
+
             exec_raw "PRAGMA encoding = 'UTF-8';" db
+            |> function
+                | Ok _ -> ()
+                | Error e -> failwithf "Unexpected error %s" e
+
+            exec_raw "PRAGMA journal_mode=WAL;" db
             |> function
                 | Ok _ -> ()
                 | Error e -> failwithf "Unexpected error %s" e
