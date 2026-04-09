@@ -240,7 +240,7 @@ module Sqlite =
         }
         member this.CreateParameters(command: SqliteCommand) =
             for p, ty, size in this.Parameters do
-                command.Parameters.Add(new SqliteParameter(p, ty, size)) |> ignore
+                command.Parameters.Add(SqliteParameter(p, ty, size)) |> ignore
 
     type NonQuery<'Parameters> =
         {
@@ -250,7 +250,7 @@ module Sqlite =
         }
         member this.CreateParameters(command: SqliteCommand) =
             for p, ty, size in this.Parameters do
-                command.Parameters.Add(new SqliteParameter(p, ty, size)) |> ignore
+                command.Parameters.Add(SqliteParameter(p, ty, size)) |> ignore
 
     module Query =
 
@@ -446,10 +446,10 @@ module Sqlite =
             | Error e -> failwithf "Error marking migration as done - Manual intervention will be needed!\n%s" e
             | Ok _ -> ()
 
-    type Query<'P, 'R> with
-        member this.Execute (value: 'P) (db: Database) = Query.exec this value db
+    type Query<'Parameters, 'Result> with
+        member this.Execute (value: 'Parameters) (db: Database) = Query.exec this value db
 
     type NonQuery<'P> with
-        member this.Execute (value: 'P) (db: Database) = NonQuery.exec this value db
-        member this.ExecuteGetId (value: 'P) (db: Database) = NonQuery.exec_with_id this value db
-        member this.Batch (values: 'P seq) (db: Database) = NonQuery.batch this values db
+        member this.Execute (value: 'Parameters) (db: Database) = NonQuery.exec this value db
+        member this.ExecuteGetId (value: 'Parameters) (db: Database) = NonQuery.exec_with_id this value db
+        member this.Batch (values: 'Parameters seq) (db: Database) = NonQuery.batch this values db
