@@ -13,7 +13,7 @@ open System
 
 module String =
     /// Matches when a string is a whitespace or null
-    let (|WhiteSpace|_|) (s) =
+    let (|WhiteSpace|_|) (s: string) =
         if String.IsNullOrWhiteSpace(s) then Some() else None
 
     /// Returns a string trimmed from both start and end
@@ -218,7 +218,7 @@ module StringPosition =
 
                 let startNum =
                     Seq.windowed start.Length startAndRest
-                    |> Seq.map (fun chars -> System.String(chars))
+                    |> Seq.map (fun chars -> String(chars))
                     |> Seq.takeWhile ((=) start)
                     |> Seq.length
 
@@ -392,7 +392,7 @@ module Lines =
             let normalized = s.Replace("\t", "    ")
 
             normalized.Length >= spaceNum
-            && normalized.Substring(0, spaceNum) = System.String(' ', spaceNum)
+            && normalized.Substring(0, spaceNum) = String(' ', spaceNum)
 
         match List.partitionWhile (fun (s, _n) -> String.IsNullOrWhiteSpace s || startsWithSpaces s) input with
         | matching, rest when matching <> [] && spaceNum >= 4 -> Some(spaceNum, matching, rest)

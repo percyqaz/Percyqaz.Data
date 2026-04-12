@@ -343,14 +343,14 @@ module Json =
 
         type Unit() =
             inherit Codec<unit>()
-            override this.To(ctx: Context) = fun _ -> JSON.Null
-            override this.From(ctx: Context) = fun _ _ -> ()
+            override this.To(_: Context) = fun _ -> JSON.Null
+            override this.From(_: Context) = fun _ _ -> ()
 
         type Bool() =
             inherit Codec<bool>()
-            override this.To(ctx: Context) = JSON.Bool
+            override this.To(_: Context) = JSON.Bool
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.Bool b -> b
@@ -359,10 +359,10 @@ module Json =
         type UInt8() =
             inherit Codec<uint8>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: uint8) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -378,10 +378,10 @@ module Json =
         type Int8() =
             inherit Codec<int8>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: int8) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -393,10 +393,10 @@ module Json =
         type UInt16() =
             inherit Codec<uint16>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: uint16) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -412,10 +412,10 @@ module Json =
         type Int16() =
             inherit Codec<int16>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: int16) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -431,10 +431,10 @@ module Json =
         type UInt32() =
             inherit Codec<uint32>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: uint32) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -450,10 +450,10 @@ module Json =
         type Int32() =
             inherit Codec<int32>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: int32) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -469,10 +469,10 @@ module Json =
         type UInt64() =
             inherit Codec<uint64>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: uint64) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -488,10 +488,10 @@ module Json =
         type Int64() =
             inherit Codec<int64>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: int64) -> i.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -507,7 +507,7 @@ module Json =
         type Float32() =
             inherit Codec<float32>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (f: float32) ->
                     let s = f.ToString CultureInfo.InvariantCulture
 
@@ -517,7 +517,7 @@ module Json =
                         JSON.Number s
                 )
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -533,7 +533,7 @@ module Json =
         type Float64() =
             inherit Codec<float>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (f: float) ->
                     let s = f.ToString CultureInfo.InvariantCulture
 
@@ -543,7 +543,7 @@ module Json =
                         JSON.Number s
                 )
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -559,10 +559,10 @@ module Json =
         type Decimal() =
             inherit Codec<decimal>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (d: decimal) -> d.ToString CultureInfo.InvariantCulture) >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -578,11 +578,11 @@ module Json =
         type BigInt() =
             inherit Codec<bigint>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 (fun (i: bigint) -> i.ToString("R", CultureInfo.InvariantCulture))
                 >> JSON.Number
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s
@@ -598,9 +598,9 @@ module Json =
 
         type Char() =
             inherit Codec<char>()
-            override this.To(ctx: Context) = string >> JSON.String
+            override this.To(_: Context) = string >> JSON.String
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s when s.Length > 0 -> s.[0]
@@ -752,12 +752,12 @@ module Json =
                     | JSON.Object xs when typeof<'K> = typeof<string> ->
                         dict.Clear()
 
-                        for (k, v) in xs |> Map.map (fun k v -> v_cdc.From (v_cdc.Default()) v) |> Map.toSeq do
+                        for k, v in xs |> Map.map (fun _ v -> v_cdc.From (v_cdc.Default()) v) |> Map.toSeq do
                             dict.Add(unbox<'K> k, v)
 
                         dict
                     | _ ->
-                        for (k, v) in list_cdc.From (list_cdc.Default()) json do
+                        for k, v in list_cdc.From (list_cdc.Default()) json do
                             dict.Add(k, v)
 
                         dict
@@ -1062,17 +1062,17 @@ module Json =
                 let cdc = ctx.GetCodec<int64>()
                 fun _ json -> TimeSpan.FromTicks(cdc.FromDefault json)
 
-            override this.Default(ctx: Context) = fun _ -> TimeSpan.Zero
+            override this.Default(_: Context) = fun _ -> TimeSpan.Zero
 
         type Datetime() =
             inherit Codec<DateTime>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 fun datetime ->
                     datetime.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture)
                     |> JSON.String
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s ->
@@ -1090,17 +1090,17 @@ module Json =
                             failwithf "Unable to parse DateTime from string: %s, got: %O" s json
                     | _ -> failwithf "Expected a JSON string, got: %O" json
 
-            override this.Default(ctx: Context) = fun _ -> DateTime.MinValue
+            override this.Default(_: Context) = fun _ -> DateTime.MinValue
 
         type DatetimeOffset() =
             inherit Codec<DateTimeOffset>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 fun datetimeoffset ->
                     datetimeoffset.ToUniversalTime().ToString("o", CultureInfo.InvariantCulture)
                     |> JSON.String
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s ->
@@ -1118,15 +1118,15 @@ module Json =
                             failwithf "Unable to parse DateTime from string: %s, got: %O" s json
                     | _ -> failwithf "Expected a JSON string, got: %O" json
 
-            override this.Default(ctx: Context) = fun _ -> DateTimeOffset.MinValue
+            override this.Default(_: Context) = fun _ -> DateTimeOffset.MinValue
 
         type Guid() =
             inherit Codec<System.Guid>()
 
-            override this.To(ctx: Context) =
+            override this.To(_: Context) =
                 fun guid -> guid.ToString("N", CultureInfo.InvariantCulture) |> JSON.String
 
-            override this.From(ctx: Context) =
+            override this.From(_: Context) =
                 fun _ json ->
                     match json with
                     | JSON.String s ->
@@ -1237,7 +1237,7 @@ module Json =
 
                 if fields.Length = 0 then
                     {
-                        To = fun (x: 'T) -> JSON.String ci.Name
+                        To = fun (_: 'T) -> JSON.String ci.Name
                         From = fun _ _ -> constructor [||] :?> 'T
                         Default = fun () -> constructor [||] :?> 'T
                     }
@@ -1248,10 +1248,10 @@ module Json =
                                 let inner = codecs.[0].To (reader x).[0]
                                 JSON.Object(Map.ofList [ (ci.Name, inner) ])
                         From =
-                            fun (d: 'T) (json: JSON) ->
+                            fun (_: 'T) (json: JSON) ->
                                 // todo: use the reader to provide defaults
                                 constructor [| codecs.[0].FromDefault json |] :?> 'T
-                        Default = fun () -> Array.map (fun cdc -> cdc.Default()) codecs |> constructor |> unbox<'T>
+                        Default = fun () -> Array.map _.Default() codecs |> constructor |> unbox<'T>
                     }
                 else
                     {
@@ -1265,7 +1265,7 @@ module Json =
 
                                 JSON.Object(Map.ofList [ (ci.Name, inner) ])
                         From =
-                            fun (d: 'T) (json: JSON) ->
+                            fun (_: 'T) (json: JSON) ->
                                 match json with
                                 | JSON.Array xs ->
                                     // todo: use the reader to provide defaults
@@ -1276,7 +1276,7 @@ module Json =
                                     |> unbox<'T>
                                 | _ ->
                                     failwithf "Expected nested JSON array with %i elements, got: %O" fields.Length json
-                        Default = fun () -> Array.map (fun cdc -> cdc.Default()) codecs |> constructor |> unbox<'T>
+                        Default = fun () -> Array.map _.Default() codecs |> constructor |> unbox<'T>
                     }
 
             let caseCodecs = unionCases |> Array.map case
@@ -1495,7 +1495,7 @@ type Json(settings: Settings) as this =
         let ty = typeof<'T>
 
         lock
-            (cache)
+            cache
             (fun () ->
 
                 if cache.ContainsKey ty then
